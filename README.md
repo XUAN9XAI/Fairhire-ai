@@ -8,10 +8,17 @@ An AI-powered hiring bias auditor designed to detect, explain, and mitigate syst
 2. **AI Explanations (Gemini)**: Explains the "why" behind the bias in plain English suitable for HR professionals.
 3. **What-If Simulator**: A powerful storytelling tool that simulates how a specific candidate's outcome would change if their demographic attributes were different.
 4. **Mitigation Engine**: Applies reweighting algorithms to mathematically balance the training data, reducing the bias gap.
+5. **Multi-Dataset Upload**: Upload and audit multiple datasets in a single session.
+6. **Audit History**: Track all past audits with timestamps, bias scores, and status.
 
 ## Project Structure
-- `/backend`: FastAPI Python server, Scikit-learn ML logic, Gemini API integration.
-- `/frontend`: Vanilla HTML/CSS/JS single-page application with a premium dark-mode design.
+- `/api`: FastAPI Python serverless functions (deployed to Vercel)
+- `/public`: Frontend static files (HTML/CSS/JS)
+- `/backend`: Local development server files
+
+## Live Demo
+
+Deployed on Vercel: *(add your URL here)*
 
 ## Quick Start (Local Development)
 
@@ -28,32 +35,37 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configure Environment
-Set your Gemini API key. The application will use a mock mode if the key is not found, but you won't get the rich AI explanations.
 ```bash
-# Windows
-set GEMINI_API_KEY=your_api_key_here
-# Mac/Linux
-export GEMINI_API_KEY="your_api_key_here"
+# Create .env file in the backend/ folder
+cp backend/.env.example backend/.env
+# Edit backend/.env and add your Gemini API key
 ```
 
 ### 3. Generate Sample Dataset
-Run the data generator to create a biased dataset (`backend/sample_data.csv`).
 ```bash
+cd backend
 python dataset_generator.py
 ```
-*Note: This generates a dataset with ~500 rows, intentionally embedding a bias against women returning to work and candidates from Tier-2/3 cities.*
 
 ### 4. Run the Server
 ```bash
-uvicorn main:app --reload
+cd backend
+uvicorn main:app --reload --env-file .env
 ```
-The application will be available at `http://localhost:8000`. The frontend is served statically from the root route.
+The application will be available at `http://localhost:8000`.
+
+## Deploy to Vercel
+
+1. Push to GitHub
+2. Import the repo in [Vercel](https://vercel.com)
+3. Add the environment variable `GEMINI_API_KEY` in Vercel Settings → Environment Variables
+4. Deploy!
 
 ## Demo Walkthrough
 
-To showcase the platform's impact, follow this storyline:
 1. **Upload**: Upload `sample_data.csv`. Select `hired` as target and `gender` as the sensitive column.
-2. **Audit**: Run the audit. Notice the ~22% Demographic Parity Gap.
-3. **Explain**: Read the Gemini explanation of how proxy variables (like employment gaps) affect women.
-4. **Simulate**: Select `Candidate CAND-001` (Priya). Change the target group to `Male`. Read the Gemini simulation showing how systemic bias rejected her.
-5. **Mitigate**: Apply the mitigation engine to drop the bias gap to acceptable levels (<10%).
+2. **Audit**: Run the audit. Notice the Demographic Parity Gap.
+3. **Explain**: Read the Gemini explanation of how proxy variables affect outcomes.
+4. **Simulate**: Select a candidate. Change the target group. Read the simulation.
+5. **Mitigate**: Apply the mitigation engine to reduce the bias gap.
+6. **History**: Review all past audits in the Audit History tab.
