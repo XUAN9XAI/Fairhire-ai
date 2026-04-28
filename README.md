@@ -1,3 +1,5 @@
+# https://fairhire-ai-five.vercel.app
+
 # FairHire AI
 
 An AI-powered hiring bias auditor designed to detect, explain, and mitigate systemic bias in hiring processes. This project utilizes the Google Gemini API to translate complex machine learning fairness metrics into human-readable explanations.
