@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FairHire AI | Hiring Bias Auditor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <div class="logo-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M12 22v-9"/><path d="M8 13.5a4 4 0 1 0 8 0"/><path d="M21 6l-3.5 13"/><path d="M3 6l3.5 13"/></svg>
+                </div>
+                <h2>FairHire AI</h2>
+            </div>
+            
+            <nav class="nav-menu">
+                <a href="#upload" class="nav-item active" data-tab="upload">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    1. Upload Data
+                </a>
+                <a href="#audit" class="nav-item disabled" data-tab="audit" id="nav-audit">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    2. Bias Audit
+                </a>
+                <a href="#explain" class="nav-item disabled" data-tab="explain" id="nav-explain">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    3. AI Explanation
+                </a>
+                <a href="#whatif" class="nav-item disabled" data-tab="whatif" id="nav-whatif">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    4. What-If Simulator
+                </a>
+                <a href="#impact" class="nav-item disabled" data-tab="impact" id="nav-impact">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    5. Mitigation
+                </a>
+                <a href="#history" class="nav-item" data-tab="history" id="nav-history">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    6. Audit History
+                </a>
+            </nav>
+            
+            <div class="sidebar-footer">
+                <div class="user-info">
+                    <div class="avatar">HR</div>
+                    <div>
+                        <div class="user-name">HR User</div>
+                        <div class="user-role">Demo Account</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="top-header">
+                <h1 id="page-title">Upload Dataset</h1>
+                <div class="header-actions">
+                    <span class="badge" id="status-badge">Awaiting Data</span>
+                </div>
+            </header>
+
+            <div class="content-wrapper">
+                
+                <!-- Tab 1: Upload Dataset -->
+                <section id="tab-upload" class="tab-content active">
+                    <div class="card glass-card upload-container">
+                        <div class="upload-area" id="drop-zone">
+                            <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                            <h3>Upload Candidate Dataset</h3>
+                            <p>Drag and drop CSV files here, or click to browse</p>
+                            <input type="file" id="file-input" accept=".csv" multiple hidden>
+                            <button class="btn btn-primary" onclick="document.getElementById('file-input').click()">Select Files</button>
+                            <p class="file-hint">Supported: .csv (Max 50MB)</p>
+                        </div>
+                        
+                        <div id="config-area" class="config-area hidden">
+                            <div class="success-banner" style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="display: flex; align-items: center; gap: 8px;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                    <span id="file-name-display">dataset(s) loaded</span>
+                                </div>
+                                <button class="btn btn-sm" id="btn-refresh" style="background-color: transparent; border: 1px solid var(--border-color); color: var(--text-main);">Refresh / Clear</button>
+                            </div>
+                            
+                            <div class="form-group" id="dataset-select-group" style="display: none;">
+                                <label for="dataset-select">Select Dataset to Audit</label>
+                                <div style="display: flex; gap: 8px;">
+                                    <select id="dataset-select" class="form-control" style="flex: 1;"></select>
+                                    <button class="btn btn-sm btn-primary" onclick="document.getElementById('file-input-add').click()" style="padding: 0 12px; font-size: 1.2rem; display: flex; align-items: center; justify-content: center;" title="Add more datasets">+</button>
+                                </div>
+                                <input type="file" id="file-input-add" accept=".csv" multiple hidden>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="target-col">Target Column (Hiring Decision)</label>
+                                <select id="target-col" class="form-control"></select>
+                                <small>The column indicating whether a candidate was hired (e.g., 1 for hired, 0 for rejected).</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="sensitive-col">Sensitive Attribute (Potential Bias)</label>
+                                <select id="sensitive-col" class="form-control"></select>
+                                <small>The demographic attribute to audit for fairness (e.g., gender, race, location).</small>
+                            </div>
+                            
+                            <button class="btn btn-primary btn-large w-100" id="btn-run-audit">Run Bias Audit</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 2: Bias Audit -->
+                <section id="tab-audit" class="tab-content">
+                    <div class="grid-2-col">
+                        <div class="card glass-card score-card">
+                            <h3>Demographic Parity Gap</h3>
+                            <div class="gauge-container">
+                                <div class="bias-score" id="bias-score-display">0%</div>
+                                <div class="bias-status" id="bias-status-display">UNKNOWN</div>
+                            </div>
+                            <p class="metrics-desc">This represents the difference in selection rates between groups. A gap > 10% is considered biased.</p>
+                        </div>
+                        
+                        <div class="card glass-card chart-card">
+                            <h3>Selection Rates by Group</h3>
+                            <div class="chart-container" id="selection-chart-container">
+                                <!-- Canvas inserted by JS -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-footer">
+                        <button class="btn btn-primary btn-large" onclick="window.location.hash='explain'">Get AI Explanation</button>
+                    </div>
+                </section>
+
+                <!-- Tab 3: AI Explanation -->
+                <section id="tab-explain" class="tab-content">
+                    <div class="grid-2-col">
+                        <div class="card glass-card gemini-card">
+                            <div class="card-header">
+                                <div class="gemini-logo">✦</div>
+                                <h3>Gemini Analysis</h3>
+                            </div>
+                            <div class="gemini-content" id="gemini-explanation">
+                                <div class="shimmer-loader"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="card glass-card">
+                            <h3>Root Cause Analysis</h3>
+                            <p class="section-desc">Proxy variables that may be encoding the bias:</p>
+                            
+                            <div class="feature-importance-list" id="feature-list">
+                                <div class="shimmer-loader"></div>
+                            </div>
+                            
+                            <div class="gemini-content sm mt-4" id="gemini-root-cause">
+                                <div class="shimmer-loader"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-footer">
+                        <button class="btn btn-primary btn-large" onclick="window.location.hash='whatif'">Try What-If Simulator</button>
+                    </div>
+                </section>
+
+                <!-- Tab 4: What-If Simulator -->
+                <section id="tab-whatif" class="tab-content">
+                    <div class="card glass-card">
+                        <div class="simulator-header">
+                            <h3>Test a Candidate</h3>
+                            <p>Select a rejected candidate to see how their demographic attributes affected their outcome.</p>
+                        </div>
+                        
+                        <div class="simulator-controls">
+                            <select id="sim-candidate-select" class="form-control sm"></select>
+                            <span class="sim-arrow">→</span>
+                            <div class="sim-action">
+                                <span>If they were</span>
+                                <input type="text" id="sim-target-group" class="form-control sm" placeholder="e.g., Male, Tier-1">
+                            </div>
+                            <button class="btn btn-primary" id="btn-simulate">Simulate</button>
+                        </div>
+                        
+                        <div class="simulator-results hidden" id="sim-results">
+                            <div class="grid-2-col">
+                                <div class="sim-profile">
+                                    <h4>Original Candidate Profile</h4>
+                                    <ul class="profile-list" id="sim-profile-details"></ul>
+                                    <div class="outcome rejected">Actual Outcome: Rejected</div>
+                                </div>
+                                <div class="sim-analysis gemini-card">
+                                    <div class="card-header">
+                                        <div class="gemini-logo">✦</div>
+                                        <h4>Gemini Simulation</h4>
+                                    </div>
+                                    <div class="gemini-content" id="sim-explanation">
+                                        <!-- Generated content -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-footer">
+                        <button class="btn btn-primary btn-large" onclick="window.location.hash='impact'">Apply Mitigation</button>
+                    </div>
+                </section>
+
+                <!-- Tab 5: Impact Dashboard (Mitigation) -->
+                <section id="tab-impact" class="tab-content">
+                    <div class="card glass-card full-width">
+                        <div class="impact-header">
+                            <div>
+                                <h3>Apply Fairness Mitigation</h3>
+                                <p>We use a 'Reweighting' algorithm to balance the training data without removing historical rows, ensuring equal opportunity.</p>
+                            </div>
+                            <button class="btn btn-success btn-large" id="btn-mitigate">Run Mitigation Engine</button>
+                        </div>
+                        
+                        <div class="impact-results hidden" id="mitigation-results">
+                            <div class="grid-2-col mt-4">
+                                <div class="metric-card before">
+                                    <h4>Before Mitigation</h4>
+                                    <div class="huge-metric" id="metric-before">22% Gap</div>
+                                    <div class="badge status-fail">Biased</div>
+                                </div>
+                                <div class="metric-card after">
+                                    <h4>After Mitigation</h4>
+                                    <div class="huge-metric" id="metric-after">5% Gap</div>
+                                    <div class="badge status-pass">Fair</div>
+                                </div>
+                            </div>
+                            
+                            <div class="success-banner mt-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                <span>The model is now ready for production deployment with ethical constraints applied.</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 6: Audit History -->
+                <section id="tab-history" class="tab-content">
+                    <div class="card glass-card full-width">
+                        <div class="impact-header">
+                            <div>
+                                <h3>Past Audits</h3>
+                                <p>Review your previously run bias audits across all datasets.</p>
+                            </div>
+                            <button class="btn btn-sm" id="btn-clear-history" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-main);">Clear History</button>
+                        </div>
+                        <div class="history-table-container mt-4" style="overflow-x: auto;">
+                            <table class="history-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                                <thead>
+                                    <tr style="border-bottom: 1px solid var(--border-color);">
+                                        <th style="padding: 12px; font-weight: 500;">Date & Time</th>
+                                        <th style="padding: 12px; font-weight: 500;">Dataset</th>
+                                        <th style="padding: 12px; font-weight: 500;">Target / Sensitive</th>
+                                        <th style="padding: 12px; font-weight: 500;">Bias Gap</th>
+                                        <th style="padding: 12px; font-weight: 500;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-table-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                            <div id="no-history-msg" style="padding: 20px; text-align: center; color: var(--text-muted); display: none;">No past audits found.</div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+            
+            <!-- Global Loader overlay -->
+            <div id="loader-overlay" class="loader-overlay hidden">
+                <div class="spinner"></div>
+                <h3 id="loader-text">Processing...</h3>
+            </div>
+            
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
