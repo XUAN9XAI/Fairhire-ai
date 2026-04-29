@@ -48,7 +48,8 @@ const els = {
     btnClearHistory: document.getElementById('btn-clear-history'),
     historyTableBody: document.getElementById('history-table-body'),
     noHistoryMsg: document.getElementById('no-history-msg'),
-    fileInputAdd: document.getElementById('file-input-add')
+    fileInputAdd: document.getElementById('file-input-add'),
+    btnSampleDemo: document.getElementById('btn-sample-demo')
 };
 
 // --- Navigation & Routing ---
@@ -275,6 +276,82 @@ async function uploadActiveFileToBackend() {
     } finally {
         hideLoader();
     }
+}
+
+// --- One-click Sample Demo ---
+
+if (els.btnSampleDemo) {
+    els.btnSampleDemo.addEventListener('click', async () => {
+        showLoader("Running Prototype Demo...");
+        
+        try {
+            const response = await fetch(`${API_BASE}/audit/sample`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) throw new Error(await response.text());
+            
+            const data = await response.json();
+            
+            if (data.error && !data.metrics) {
+                throw new Error(data.error);
+            }
+            
+            state.fileUploaded = true;
+            state.auditRun = true;
+            state.metricsBefore = data.metrics;
+            state.candidateIds = data.candidate_ids;
+            
+            // Hide upload area, show config as read-only indicator
+            els.dropZone.classList.add('hidden');
+            els.configArea.classList.remove('hidden');
+            els.fileNameDisplay.textContent = 'Sample Dataset (25 rows) — Prototype Mode';
+            
+            // Populate column dropdowns for display
+            els.targetCol.innerHTML = '<option value="hired">hired</option>';
+            els.sensitiveCol.innerHTML = '<option value="gender">gender</option>';
+            
+            // Populate Tab 2: Audit
+            updateAuditDashboard(data.metrics);
+            
+            // Populate Tab 3: Explain
+            els.geminiExplanation.innerHTML = `<p>${data.explanation}</p>`;
+            els.geminiRootCause.innerHTML = `<p>${data.root_cause}</p>`;
+            renderFeatureImportance(data.feature_importances);
+            
+            // Populate Tab 4: What-If
+            els.simCandidateSelect.innerHTML = '';
+            data.candidate_ids.forEach(id => {
+                els.simCandidateSelect.add(new Option(`Candidate ${id}`, id));
+            });
+            
+            // Enable all nav items
+            ['nav-audit', 'nav-explain', 'nav-whatif', 'nav-impact'].forEach(id => {
+                document.getElementById(id).classList.remove('disabled');
+            });
+            
+            els.statusBadge.textContent = data.metrics.status === "FAIL" ? "Bias Detected" : "Fairness Passed";
+            els.statusBadge.className = `badge status-${data.metrics.status.toLowerCase()}`;
+            
+            // Save to History
+            saveAuditToHistory({
+                date: new Date().toISOString(),
+                datasetName: '🧪 Sample Dataset (Prototype)',
+                targetCol: 'hired',
+                sensitiveCol: 'gender',
+                biasGap: Math.round(data.metrics.demographic_parity_gap * 100),
+                status: data.metrics.status
+            });
+            
+            window.location.hash = 'audit';
+            
+        } catch (err) {
+            console.error(err);
+            alert("Sample demo failed: " + err.message);
+        } finally {
+            hideLoader();
+        }
+    });
 }
 
 // --- Tab 2: Audit & Tab 3: Explain ---

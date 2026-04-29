@@ -1,6 +1,11 @@
 import os
 import time
+import signal
 from google import genai
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+
+# Thread pool for timeout enforcement
+_executor = ThreadPoolExecutor(max_workers=2)
 
 # Initialize client. It will automatically use the GEMINI_API_KEY environment variable.
 def get_client():
@@ -15,29 +20,34 @@ def get_client():
 # Model preference order — try gemini-2.5-flash first, then fall back
 MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"]
 
-def _call_gemini(client, prompt, max_retries=2):
-    """Call Gemini with retry and model fallback logic."""
+GEMINI_TIMEOUT_SECONDS = 2
+
+def _call_gemini(client, prompt, max_retries=1):
+    """Call Gemini with retry, model fallback, and 2-second timeout."""
     for model_name in MODELS:
         for attempt in range(max_retries + 1):
             try:
-                response = client.models.generate_content(
+                future = _executor.submit(
+                    client.models.generate_content,
                     model=model_name,
                     contents=prompt,
                 )
+                response = future.result(timeout=GEMINI_TIMEOUT_SECONDS)
                 return response.text
+            except FuturesTimeoutError:
+                print(f"Gemini timeout (model={model_name}, attempt={attempt+1}): exceeded {GEMINI_TIMEOUT_SECONDS}s")
+                break  # Try next model immediately
             except Exception as e:
                 err_str = str(e)
                 print(f"Gemini API Error (model={model_name}, attempt={attempt+1}): {err_str[:200]}")
                 
-                # If rate limited, wait briefly and try next model
                 if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
                     if attempt < max_retries:
-                        time.sleep(2)
+                        time.sleep(1)
                         continue
                     else:
-                        break  # Try next model
+                        break
                 else:
-                    # For non-rate-limit errors, don't retry
                     break
     
     return None  # All models failed
@@ -85,16 +95,28 @@ def explain_bias(metrics):
 
 
 def simulate_whatif(candidate_data, current_prediction, sensitive_col, target_group, metrics):
-    """Simulates what would happen if the candidate belonged to a different group."""
+    """Simulates what would happen if the candidate belonged to a different group.
+    Anchored to actual computed probability differences."""
     pred_str = "Hired" if current_prediction == 1 else "Rejected"
     gap_pct = metrics['demographic_parity_gap'] * 100
     
+    # Extract anchored values if available
+    group_probs = metrics.get('group_probs', {})
+    delta = metrics.get('delta', 0)
+    delta_pct = abs(delta * 100)
+    direction = "increase" if delta > 0 else "decrease"
+    
+    # Build anchored fallback with real numbers
+    prob_str = ", ".join([f"{g}: {p:.0%}" for g, p in group_probs.items()]) if group_probs else ""
+    
     fallback = f"Based on our bias analysis, this candidate was {pred_str}. "
+    if prob_str:
+        fallback += f"Group hiring rates are: {prob_str}. "
     if current_prediction == 0:
-        fallback += f"If their '{sensitive_col}' were changed to '{target_group}', the model's detected bias gap of {gap_pct:.1f}% suggests their likelihood of being hired would increase. "
-        fallback += f"This is because the current model systematically favors certain demographic groups through proxy variables like employment gaps and location."
+        fallback += f"If their '{sensitive_col}' were changed to '{target_group}', their probability of being hired would {direction} by approximately {delta_pct:.1f}%. "
+        fallback += f"This reflects the {gap_pct:.1f}% demographic parity gap driven by proxy variables like employment gaps and location."
     else:
-        fallback += f"If their '{sensitive_col}' were changed to '{target_group}', the outcome might remain the same, but the confidence level could change due to the {gap_pct:.1f}% demographic parity gap detected."
+        fallback += f"If their '{sensitive_col}' were changed to '{target_group}', the outcome might remain the same, but the probability would shift by {delta_pct:.1f}% due to systemic bias."
     
     client = get_client()
     if not client:
@@ -109,12 +131,13 @@ def simulate_whatif(candidate_data, current_prediction, sensitive_col, target_gr
     {candidate_str}
 
     Model Prediction: {pred_str}
-    Current Bias Metric (Gap): {gap_pct:.1f}% advantage for other groups.
+    Actual computed group hiring rates: {prob_str}
+    Probability delta if group changed: {delta_pct:.1f}% {direction}
+    Demographic parity gap: {gap_pct:.1f}%
 
-    Simulate:
-    If this candidate's `{sensitive_col}` was changed to `{target_group}`, how might the outcome change based on the systemic bias we detected? 
-
-    Explain clearly and ethically to demonstrate the unfairness of the model. Do not hallucinate exact percentages beyond the known gap, but explain the *directional* change. Keep it under 60 words.
+    Simulate what would happen if this candidate's `{sensitive_col}` was changed to `{target_group}`.
+    Use ONLY the numbers provided above. Do NOT invent new percentages.
+    Explain clearly and ethically. Keep it under 60 words.
     """
 
     result = _call_gemini(client, prompt)

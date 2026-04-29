@@ -1,19 +1,20 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 import pandas as pd
 import numpy as np
 import io
 import os
 import json
 import pickle
-import tempfile
 
 # Import engine modules (Vercel adds api/ to sys.path)
-import sys, os
+import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from bias_engine import train_model, compute_bias_metrics, get_feature_importance, apply_reweighting
 from gemini_engine import explain_bias, simulate_whatif, analyze_root_cause
+from sample_data import get_sample_dataset
 
 app = FastAPI(title="FairHire AI API")
 
@@ -58,10 +59,48 @@ def load_csv():
 class AuditRequest(BaseModel):
     target_col: str
     sensitive_col: str
+    use_sample: Optional[bool] = False
 
 class WhatIfRequest(BaseModel):
     candidate_id: str
     target_group: str
+
+# --- Shared audit pipeline ---
+def _run_audit_pipeline(df, target_col, sensitive_col, mode="standard"):
+    """Core audit logic reused by /audit and /audit/sample."""
+    try:
+        save_csv(df)
+        save_session("config", {"target_col": target_col, "sensitive_col": sensitive_col})
+
+        # Handle NaN values
+        df_clean = df.copy()
+        for col in df_clean.select_dtypes(include=["number"]).columns:
+            df_clean[col] = df_clean[col].fillna(df_clean[col].median())
+
+        model, predictions, encoders, features = train_model(df_clean, target_col, sensitive_col)
+        save_session("model_data", {"encoders": encoders, "features": features})
+
+        metrics = compute_bias_metrics(df_clean, sensitive_col, predictions)
+        if "error" in metrics:
+            return {"error": metrics["error"]}
+        save_session("metrics_before", metrics)
+
+        feature_importances = get_feature_importance(model, features)
+        explanation = explain_bias(metrics)
+        root_cause = analyze_root_cause(feature_importances)
+
+        candidate_ids = df['candidate_id'].head(5).tolist() if 'candidate_id' in df.columns else []
+
+        return {
+            "metrics": metrics,
+            "feature_importances": feature_importances[:5],
+            "explanation": explanation,
+            "root_cause": root_cause,
+            "candidate_ids": candidate_ids,
+            "mode": mode
+        }
+    except Exception as e:
+        return {"error": str(e), "mode": mode}
 
 # --- Endpoints ---
 
@@ -84,49 +123,41 @@ async def upload_file(file: UploadFile = File(...)):
 
 @app.post("/api/audit")
 async def run_audit(request: AuditRequest):
-    df = load_csv()
-    if df is None:
-        raise HTTPException(status_code=400, detail="No dataset uploaded")
-    
-    save_session("config", {
-        "target_col": request.target_col,
-        "sensitive_col": request.sensitive_col
-    })
-    
-    # 1. Train Model
-    model, predictions, encoders, features = train_model(
-        df, request.target_col, request.sensitive_col
-    )
-    
-    # Save model info for later
-    save_session("model_data", {
-        "encoders": encoders,
-        "features": features
-    })
-    
-    # 2. Compute Metrics
-    metrics = compute_bias_metrics(df, request.sensitive_col, predictions)
-    if "error" in metrics:
-        raise HTTPException(status_code=400, detail=metrics["error"])
-    save_session("metrics_before", metrics)
-    
-    # 3. Feature Importance
-    feature_importances = get_feature_importance(model, features)
-    
-    # 4. Explanations (Gemini)
-    explanation = explain_bias(metrics)
-    root_cause = analyze_root_cause(feature_importances)
-    
-    # Candidate IDs for what-if
-    candidate_ids = df['candidate_id'].head(5).tolist() if 'candidate_id' in df.columns else []
-    
-    return {
-        "metrics": metrics,
-        "feature_importances": feature_importances[:5],
-        "explanation": explanation,
-        "root_cause": root_cause,
-        "candidate_ids": candidate_ids
-    }
+    if request.use_sample:
+        df = get_sample_dataset()
+        result = _run_audit_pipeline(df, request.target_col, request.sensitive_col, mode="prototype")
+    else:
+        df = load_csv()
+        if df is None:
+            raise HTTPException(status_code=400, detail="No dataset uploaded")
+        result = _run_audit_pipeline(df, request.target_col, request.sensitive_col, mode="standard")
+
+    if "error" in result and "metrics" not in result:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return result
+
+@app.post("/api/audit/sample")
+async def run_sample_audit():
+    """One-click demo: bias audit on internal sample data. No input required."""
+    try:
+        df = get_sample_dataset()
+        result = _run_audit_pipeline(df, target_col="hired", sensitive_col="gender", mode="prototype")
+
+        if "error" in result and "metrics" not in result:
+            raise HTTPException(status_code=500, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {
+            "error": str(e),
+            "mode": "prototype",
+            "metrics": {"bias_score": 0.0, "status": "ERROR", "selection_rates": {}, "demographic_parity_gap": 0.0},
+            "feature_importances": [],
+            "explanation": "An error occurred during the sample audit.",
+            "root_cause": "Unable to process sample data.",
+            "candidate_ids": []
+        }
 
 @app.post("/api/whatif")
 async def run_whatif(request: WhatIfRequest):
@@ -142,13 +173,19 @@ async def run_whatif(request: WhatIfRequest):
     
     if 'candidate_id' not in df.columns:
         raise HTTPException(status_code=400, detail="Dataset missing candidate_id column")
-    
+
+    # Compute anchored group probabilities
+    group_probs = {}
+    for g in df[sensitive_col].unique():
+        group_df = df[df[sensitive_col] == g]
+        if len(group_df) > 0:
+            group_probs[str(g)] = float(group_df[target_col].mean())
+
     candidate_row = df[df['candidate_id'] == request.candidate_id]
     if candidate_row.empty:
         raise HTTPException(status_code=404, detail="Candidate not found")
     
     candidate_data = candidate_row.iloc[0].to_dict()
-    # Convert numpy types to native Python for JSON serialization
     for k, v in candidate_data.items():
         try:
             if hasattr(v, 'item'):
@@ -157,18 +194,22 @@ async def run_whatif(request: WhatIfRequest):
             candidate_data[k] = str(v)
     
     current_prediction = candidate_data.get(target_col, 0)
-    
+    current_group = str(candidate_data.get(sensitive_col, ""))
+    current_prob = group_probs.get(current_group, 0.5)
+    target_prob = group_probs.get(request.target_group, 0.5)
+    delta = target_prob - current_prob
+
+    enriched_metrics = {**metrics, "group_probs": group_probs, "delta": delta}
+
     whatif_explanation = simulate_whatif(
-        candidate_data,
-        current_prediction,
-        sensitive_col,
-        request.target_group,
-        metrics
+        candidate_data, current_prediction, sensitive_col, request.target_group, enriched_metrics
     )
     
     return {
         "candidate_data": candidate_data,
-        "whatif_explanation": whatif_explanation
+        "whatif_explanation": whatif_explanation,
+        "group_probabilities": group_probs,
+        "delta": round(delta * 100, 1)
     }
 
 @app.post("/api/mitigate")
@@ -181,17 +222,14 @@ async def run_mitigation():
     
     target_col = config["target_col"]
     sensitive_col = config["sensitive_col"]
-    
-    # Apply Reweighting
-    weights = apply_reweighting(df, target_col, sensitive_col)
-    
-    # Retrain model with weights
-    model, predictions, _, _ = train_model(
-        df, target_col, sensitive_col, sample_weight=weights
-    )
-    
-    # Recompute metrics
-    metrics_after = compute_bias_metrics(df, sensitive_col, predictions)
+
+    df_clean = df.copy()
+    for col in df_clean.select_dtypes(include=["number"]).columns:
+        df_clean[col] = df_clean[col].fillna(df_clean[col].median())
+
+    weights = apply_reweighting(df_clean, target_col, sensitive_col)
+    model, predictions, _, _ = train_model(df_clean, target_col, sensitive_col, sample_weight=weights)
+    metrics_after = compute_bias_metrics(df_clean, sensitive_col, predictions)
     metrics_before = load_session("metrics_before")
     
     return {
