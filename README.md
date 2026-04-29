@@ -20,7 +20,7 @@ An AI-powered hiring bias auditor designed to detect, explain, and mitigate syst
 
 ## Live Demo
 
-Deployed on Vercel: *(add your URL here)*
+Deployed on Vercel: https://fairhire-ai-five.vercel.app
 
 ## Quick Start (Local Development)
 
