@@ -581,11 +581,18 @@ function loadAuditFromHistory(id) {
     alert(`Opened audit for ${entry.datasetName} at ${targetHash.toUpperCase()} section.`);
 }
 
-// --- Exports ---
+// --- Exports (Event Delegation for reliability) ---
 
-if (els.btnExportJson) {
-    els.btnExportJson.addEventListener('click', () => {
-        if (!state.fullAuditData) return;
+document.addEventListener('click', (e) => {
+    // JSON Export
+    if (e.target.closest('#btn-export-json')) {
+        const dataToExport = state.fullAuditData || (state.metricsBefore ? { metrics: state.metricsBefore, metricsAfter: state.metricsAfter } : null);
+        
+        if (!dataToExport) {
+            alert("No audit data available to export. Please run an audit first.");
+            return;
+        }
+
         const exportData = {
             generatedAt: new Date().toISOString(),
             dataset: {
@@ -594,8 +601,9 @@ if (els.btnExportJson) {
                 target: els.targetCol.value,
                 sensitive: els.sensitiveCol.value
             },
-            audit: state.fullAuditData
+            audit: dataToExport
         };
+
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -603,12 +611,15 @@ if (els.btnExportJson) {
         a.download = `fairhire-audit-${exportData.dataset.name.split('.')[0]}-${Date.now()}.json`;
         a.click();
         URL.revokeObjectURL(url);
-    });
-}
+    }
 
-if (els.btnExportCsv) {
-    els.btnExportCsv.addEventListener('click', () => {
-        if (!state.metricsBefore) return;
+    // CSV Export
+    if (e.target.closest('#btn-export-csv')) {
+        if (!state.metricsBefore) {
+            alert("No audit metrics available. Please run an audit first.");
+            return;
+        }
+        
         const m = state.metricsBefore;
         const datasetName = state.uploadedFiles[state.activeFileIndex]?.name || 'sample';
         
@@ -635,8 +646,8 @@ if (els.btnExportCsv) {
         a.download = `fairhire-audit-${datasetName.split('.')[0]}-${Date.now()}.csv`;
         a.click();
         URL.revokeObjectURL(url);
-    });
-}
+    }
+});
 
 if (els.btnClearHistory) {
     els.btnClearHistory.addEventListener('click', () => {
