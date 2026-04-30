@@ -545,7 +545,7 @@ function loadAuditFromHistory(id) {
     const hist = getHistory();
     const entry = hist.find(a => a.id === id);
     if (!entry || !entry.auditData) {
-        alert("Full audit data not available for this entry.");
+        alert("This is a legacy history entry from an older version of FairHire. Only new audits run after the update can be re-opened with full data.");
         return;
     }
 
