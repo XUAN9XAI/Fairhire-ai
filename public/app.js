@@ -49,7 +49,9 @@ const els = {
     historyTableBody: document.getElementById('history-table-body'),
     noHistoryMsg: document.getElementById('no-history-msg'),
     fileInputAdd: document.getElementById('file-input-add'),
-    btnSampleDemo: document.getElementById('btn-sample-demo')
+    btnSampleDemo: document.getElementById('btn-sample-demo'),
+    btnDownloadPdf: document.getElementById('btn-download-pdf'),
+    pdfBtnText: document.getElementById('pdf-btn-text')
 };
 
 // --- Navigation & Routing ---
@@ -649,3 +651,84 @@ els.btnMitigate.addEventListener('click', async () => {
         hideLoader();
     }
 });
+
+// --- Tab 5b: Download PDF Report ---
+
+if (els.btnDownloadPdf) {
+    els.btnDownloadPdf.addEventListener('click', async () => {
+        // Disable button and show spinner state
+        els.btnDownloadPdf.disabled = true;
+        els.btnDownloadPdf.setAttribute('aria-busy', 'true');
+        els.pdfBtnText.textContent = 'Generating PDF...';
+
+        try {
+            // Collect all audit data from state and DOM
+            const explanationEl = document.getElementById('gemini-explanation');
+            const rootCauseEl = document.getElementById('gemini-root-cause');
+            const simExplanationEl = document.getElementById('sim-explanation');
+            const featureListEl = document.getElementById('feature-list');
+
+            // Extract text from feature items
+            const keyFactors = [];
+            if (featureListEl) {
+                featureListEl.querySelectorAll('.feature-item').forEach(item => {
+                    const name = item.querySelector('.feature-name');
+                    const val = item.querySelector('.feature-val');
+                    if (name) {
+                        keyFactors.push(`${name.textContent}${val ? ' (importance: ' + val.textContent + ')' : ''}`);
+                    }
+                });
+            }
+
+            // Build mitigation narrative
+            let mitigationText = '';
+            if (state.metricsBefore && state.metricsAfter) {
+                const gBefore = Math.round(state.metricsBefore.demographic_parity_gap * 100);
+                const gAfter = Math.round(state.metricsAfter.demographic_parity_gap * 100);
+                mitigationText = `The reweighting algorithm reduced the bias gap from ${gBefore}% to ${gAfter}%. `;
+                if (state.metricsAfter.status === 'PASS') {
+                    mitigationText += 'The model now meets fairness thresholds and is ready for production deployment with ethical constraints applied.';
+                } else {
+                    mitigationText += 'The bias has been reduced, but the model may still require additional fairness interventions for full compliance.';
+                }
+            }
+
+            const audit = {
+                metrics: state.metricsBefore,
+                before: state.metricsBefore,
+                after: state.metricsAfter,
+                explanation: explanationEl ? explanationEl.textContent.trim() : '',
+                whatIf: simExplanationEl ? simExplanationEl.textContent.trim() : '',
+                mitigation: mitigationText,
+                keyFactors: keyFactors,
+            };
+
+            // Build dataset info
+            const activeFile = state.uploadedFiles[state.activeFileIndex];
+            const dataset = {
+                name: activeFile ? activeFile.name : (els.fileNameDisplay.textContent || 'sample'),
+                columns: els.targetCol.options.length || '?',
+                targetCol: els.targetCol.value || 'hired',
+                sensitiveCol: els.sensitiveCol.value || 'gender',
+            };
+
+            // Generate and download
+            const fileName = generateImpactPdf(audit, dataset);
+            console.log('PDF downloaded:', fileName);
+
+            // Brief success toast
+            els.pdfBtnText.textContent = '✓ PDF Downloaded!';
+            setTimeout(() => {
+                els.pdfBtnText.textContent = 'Download PDF Report';
+            }, 2500);
+
+        } catch (err) {
+            console.error('PDF generation failed:', err);
+            alert('Could not generate PDF: ' + err.message);
+            els.pdfBtnText.textContent = 'Download PDF Report';
+        } finally {
+            els.btnDownloadPdf.disabled = false;
+            els.btnDownloadPdf.removeAttribute('aria-busy');
+        }
+    });
+}
