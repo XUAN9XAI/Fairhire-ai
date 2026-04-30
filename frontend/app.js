@@ -546,8 +546,35 @@ function renderComparisonCharts(a, b) {
 function loadAuditFromHistory(id) {
     const hist = getHistory();
     const entry = hist.find(a => a.id === id);
-    if (!entry || !entry.auditData) {
-        alert("This is a legacy history entry from an older version of FairHire. Only new audits run after the update can be re-opened with full data.");
+    if (!entry) return;
+
+    if (!entry.auditData) {
+        // Try to recover if it's a sample dataset
+        if (entry.datasetName.includes("Sample") || entry.datasetName.includes("Prototype")) {
+            showLoader("Recovering legacy sample audit...");
+            fetch(`${API_BASE}/audit/sample`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    target_col: entry.targetCol,
+                    sensitive_col: entry.sensitiveCol
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                entry.auditData = data;
+                localStorage.setItem('fairhire_history', JSON.stringify(hist));
+                hideLoader();
+                loadAuditFromHistory(id); // Retry with data
+            })
+            .catch(err => {
+                hideLoader();
+                alert("Could not recover legacy entry: " + err.message);
+            });
+            return;
+        }
+        
+        alert("This is a legacy entry from an uploaded file. Because the original file was not stored, it cannot be re-opened. Please run a new audit.");
         return;
     }
 

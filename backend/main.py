@@ -131,11 +131,17 @@ async def run_audit(request: AuditRequest):
     return result
 
 @app.post("/api/audit/sample")
-async def run_sample_audit():
-    """One-click demo: runs bias audit on internal sample dataset. No input required."""
+async def run_sample_audit(request: Optional[dict] = None):
+    """One-click demo: runs bias audit on internal sample dataset. Supports custom target/sensitive if provided."""
     try:
+        target_col = "hired"
+        sensitive_col = "gender"
+        if request:
+            target_col = request.get("target_col", "hired")
+            sensitive_col = request.get("sensitive_col", "gender")
+            
         df = get_sample_dataset()
-        result = _run_audit_pipeline(df, target_col="hired", sensitive_col="gender", mode="prototype")
+        result = _run_audit_pipeline(df, target_col=target_col, sensitive_col=sensitive_col, mode="prototype")
 
         if "error" in result and "metrics" not in result:
             raise HTTPException(status_code=500, detail=result["error"])
