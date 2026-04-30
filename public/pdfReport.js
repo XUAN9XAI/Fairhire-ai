@@ -142,15 +142,25 @@ function generateImpactPdf(audit, dataset, chartPng) {
     // 5. VISUAL EVIDENCE (Embedded Chart)
     // ══════════════════════════════════════════════════════
     if (chartPng) {
-        drawHeading('Visual Evidence (Selection Rates)');
-        const imgW = CONTENT_W;
-        const imgH = 220;
-        checkBreak(imgH + 20);
-        doc.addImage(chartPng, 'PNG', MARGIN_X, y, imgW, imgH);
-        y += imgH + 10;
-        doc.setFontSize(9); doc.setTextColor(...PDF_COLORS.footerGray); doc.setFont('Helvetica', 'italic');
-        doc.text('Figure 1: Automated selection rate distribution by sensitive group.', PAGE_W / 2, y, { align: 'center' });
-        y += 30;
+        try {
+            drawHeading('Visual Evidence (Selection Rates)');
+            const imgW = CONTENT_W;
+            const imgH = 220;
+            checkBreak(imgH + 20);
+            
+            // Fix: jsPDF addImage handles data URLs better when format is explicitly provided
+            // or when the prefix is stripped. We'll provide the 'PNG' hint.
+            doc.addImage(chartPng, 'PNG', MARGIN_X, y, imgW, imgH, undefined, 'FAST');
+            
+            y += imgH + 10;
+            doc.setFontSize(9); doc.setTextColor(...PDF_COLORS.footerGray); doc.setFont('Helvetica', 'italic');
+            doc.text('Figure 1: Automated selection rate distribution by sensitive group.', PAGE_W / 2, y, { align: 'center' });
+            y += 30;
+        } catch (e) {
+            console.warn("Could not embed chart PNG in PDF:", e);
+            drawParagraph("(Visual chart could not be rendered in this report. Please refer to the live dashboard for interactive visualizations.)", 9, PDF_COLORS.muted, CONTENT_W);
+            y += 20;
+        }
     }
 
     // ══════════════════════════════════════════════════════
