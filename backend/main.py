@@ -218,13 +218,32 @@ async def run_whatif(request: WhatIfRequest):
     }
 
 @app.post("/api/mitigate")
-async def run_mitigation():
+async def run_mitigation(request: Optional[dict] = None):
     df = session_data.get("df")
     target_col = session_data.get("target_col")
     sensitive_col = session_data.get("sensitive_col")
     
-    if df is None or target_col is None:
-         raise HTTPException(status_code=400, detail="Run audit first")
+    # Auto-recovery for prototype mode or expired sessions
+    if df is None:
+        # If we have target/sensitive info from the request, we can try to recover
+        if request and request.get("target_col") and request.get("sensitive_col"):
+            target_col = request.get("target_col")
+            sensitive_col = request.get("sensitive_col")
+            # For now, we assume recovery means reloading sample data
+            df = get_sample_dataset()
+            session_data["df"] = df
+            session_data["target_col"] = target_col
+            session_data["sensitive_col"] = sensitive_col
+            # Re-run audit to get metrics_before
+            audit_res = _run_audit_pipeline(df, target_col, sensitive_col)
+            session_data["metrics_before"] = audit_res["metrics"]
+        else:
+            raise HTTPException(status_code=400, detail="Session expired. Please re-run audit.")
+
+    if target_col is None:
+        target_col = "hired"
+    if sensitive_col is None:
+        sensitive_col = "gender"
 
     # Handle NaN values
     df_clean = df.copy()

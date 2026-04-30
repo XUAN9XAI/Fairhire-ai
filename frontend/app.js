@@ -803,7 +803,12 @@ els.btnMitigate.addEventListener('click', async () => {
     
     try {
         const response = await fetch(`${API_BASE}/mitigate`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                target_col: els.targetCol.value,
+                sensitive_col: els.sensitiveCol.value
+            })
         });
         
         if (!response.ok) {
