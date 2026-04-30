@@ -445,8 +445,10 @@ function getHistory() {
 
 function saveAuditToHistory(auditRecord) {
     const hist = getHistory();
-    hist.unshift(auditRecord); // Add to top
-    localStorage.setItem('fairhire_history', JSON.stringify(hist));
+    hist.unshift(auditRecord); 
+    // Keep only last 20 entries to prevent localStorage overflow (5MB limit)
+    const limitedHist = hist.slice(0, 20);
+    localStorage.setItem('fairhire_history', JSON.stringify(limitedHist));
 }
 
 function renderHistory() {
@@ -621,7 +623,8 @@ document.addEventListener('click', (e) => {
         }
         
         const m = state.metricsBefore;
-        const datasetName = state.uploadedFiles[state.activeFileIndex]?.name || 'sample';
+        const rawName = state.uploadedFiles[state.activeFileIndex]?.name || 'sample';
+        const datasetName = `"${rawName.replace(/"/g, '""')}"`; // Escape for CSV
         
         let csv = '\ufeffsection,key,value\n';
         csv += `summary,bias_score,${Math.round(m.demographic_parity_gap * 100)}\n`;
@@ -840,11 +843,17 @@ if (els.btnDownloadPdf) {
         els.pdfBtnText.textContent = 'Generating PDF...';
 
         try {
-            // Capture chart as PNG
+            // Capture chart as PNG - Add small delay to ensure animations are stable
             let chartPng = null;
             const chartContainer = document.getElementById('selection-chart-container');
             if (window.htmlToImage && chartContainer) {
-                chartPng = await window.htmlToImage.toPng(chartContainer, { backgroundColor: '#0f172a' });
+                // Ensure chart is visible before capture
+                await new Promise(r => setTimeout(r, 300)); 
+                chartPng = await window.htmlToImage.toPng(chartContainer, { 
+                    backgroundColor: '#0f172a',
+                    cacheBust: true,
+                    pixelRatio: 2 
+                });
             }
 
             // Collect all audit data from state and DOM
