@@ -8,7 +8,9 @@ const state = {
     metricsBefore: null,
     metricsAfter: null,
     uploadedFiles: [],
-    activeFileIndex: 0
+    activeFileIndex: 0,
+    currentRows: 0,
+    fullAuditData: null // Stores latest full audit for exports
 };
 
 // DOM Elements
@@ -51,7 +53,12 @@ const els = {
     fileInputAdd: document.getElementById('file-input-add'),
     btnSampleDemo: document.getElementById('btn-sample-demo'),
     btnDownloadPdf: document.getElementById('btn-download-pdf'),
-    pdfBtnText: document.getElementById('pdf-btn-text')
+    pdfBtnText: document.getElementById('pdf-btn-text'),
+    btnExportJson: document.getElementById('btn-export-json'),
+    btnExportCsv: document.getElementById('btn-export-csv'),
+    historyCompareArea: document.getElementById('history-comparison-area'),
+    compareBiasChart: document.getElementById('compare-bias-chart'),
+    compareFairnessChart: document.getElementById('compare-fairness-chart')
 };
 
 // --- Navigation & Routing ---
@@ -262,10 +269,8 @@ async function uploadActiveFileToBackend() {
             ? `${state.uploadedFiles.length} dataset(s) loaded` 
             : `${file.name} loaded (${data.rows} rows)`;
             
-        els.dropZone.classList.add('hidden');
-        els.configArea.classList.remove('hidden');
-        
         state.fileUploaded = true;
+        state.currentRows = data.rows;
         els.statusBadge.textContent = "Data Ready";
         els.statusBadge.className = "badge status-pass";
         
@@ -381,6 +386,7 @@ els.btnRunAudit.addEventListener('click', async () => {
         state.auditRun = true;
         state.metricsBefore = data.metrics;
         state.candidateIds = data.candidate_ids;
+        state.fullAuditData = data;
         
         // Populate Tab 2
         updateAuditDashboard(data.metrics);
@@ -407,12 +413,15 @@ els.btnRunAudit.addEventListener('click', async () => {
         // Save to History
         const activeFile = state.uploadedFiles[state.activeFileIndex];
         saveAuditToHistory({
+            id: Date.now().toString(),
             date: new Date().toISOString(),
             datasetName: activeFile ? activeFile.name : 'Unknown',
             targetCol: target,
             sensitiveCol: sensitive,
+            rowCount: state.currentRows || 25,
             biasGap: Math.round(data.metrics.demographic_parity_gap * 100),
-            status: data.metrics.status
+            status: data.metrics.status,
+            auditData: data // Save full data for reload/comparison
         });
         
         window.location.hash = 'audit';
@@ -459,15 +468,173 @@ function renderHistory() {
         const tr = document.createElement('tr');
         tr.style.borderBottom = "1px solid var(--border-color)";
         tr.innerHTML = `
-            <td style="padding: 12px; font-size: 0.9rem;">${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</td>
-            <td style="padding: 12px; font-weight: 500;">${audit.datasetName}</td>
+            <td style="padding: 12px;"><input type="checkbox" class="compare-checkbox" data-id="${audit.id || ''}"></td>
+            <td style="padding: 12px; font-size: 0.9rem;">${d.toLocaleDateString()}</td>
+            <td style="padding: 12px; font-weight: 500;" title="${audit.datasetName}">${audit.datasetName.substring(0, 20)}${audit.datasetName.length > 20 ? '...' : ''}</td>
             <td style="padding: 12px; font-size: 0.9rem; color: var(--text-muted);">${audit.targetCol} / ${audit.sensitiveCol}</td>
+            <td style="padding: 12px; font-size: 0.9rem;">${audit.rowCount || '—'}</td>
             <td style="padding: 12px; font-weight: bold;">${audit.biasGap}%</td>
             <td style="padding: 12px;">
-                <span class="badge ${isPass ? 'status-pass' : 'status-fail'}" style="font-size: 0.75rem;">${audit.status}</span>
+                <button class="btn btn-sm btn-open-audit" data-id="${audit.id || ''}" style="padding: 4px 8px; font-size: 0.75rem;">Open</button>
             </td>
         `;
         els.historyTableBody.appendChild(tr);
+    });
+
+    // Add listeners for checkboxes and open button
+    document.querySelectorAll('.compare-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateHistoryComparison);
+    });
+    document.querySelectorAll('.btn-open-audit').forEach(btn => {
+        btn.addEventListener('click', (e) => loadAuditFromHistory(e.target.dataset.id));
+    });
+}
+
+function updateHistoryComparison() {
+    const selected = Array.from(document.querySelectorAll('.compare-checkbox:checked'));
+    if (selected.length !== 2) {
+        els.historyCompareArea.classList.add('hidden');
+        return;
+    }
+
+    const hist = getHistory();
+    const auditA = hist.find(a => a.id === selected[0].dataset.id);
+    const auditB = hist.find(a => a.id === selected[1].dataset.id);
+
+    if (!auditA || !auditB) return;
+
+    els.historyCompareArea.classList.remove('hidden');
+    renderComparisonCharts(auditA, auditB);
+}
+
+function renderComparisonCharts(a, b) {
+    // Bias Score Comparison
+    els.compareBiasChart.innerHTML = '';
+    [a, b].forEach((audit, i) => {
+        const color = i === 0 ? 'var(--primary)' : (audit.biasGap > a.biasGap ? 'var(--destructive)' : 'var(--success)');
+        els.compareBiasChart.innerHTML += `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="width: 80px; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${audit.datasetName}</span>
+                <div style="flex: 1; height: 16px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden;">
+                    <div style="width: ${audit.biasGap}%; height: 100%; background: ${color}; transition: width 0.5s;"></div>
+                </div>
+                <span style="width: 30px; font-weight: bold;">${audit.biasGap}%</span>
+            </div>
+        `;
+    });
+
+    // Fairness Level Comparison
+    const getFairnessVal = (status) => status === 'PASS' ? 3 : 1;
+    const getFairnessColor = (status) => status === 'PASS' ? 'var(--success)' : 'var(--destructive)';
+    els.compareFairnessChart.innerHTML = '';
+    [a, b].forEach(audit => {
+        const val = getFairnessVal(audit.status);
+        els.compareFairnessChart.innerHTML += `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="width: 80px; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${audit.datasetName}</span>
+                <div style="flex: 1; height: 16px; background: rgba(255,255,255,0.05); border-radius: 4px; overflow: hidden;">
+                    <div style="width: ${(val/3)*100}%; height: 100%; background: ${getFairnessColor(audit.status)}; transition: width 0.5s;"></div>
+                </div>
+                <span style="width: 50px; font-size: 0.75rem;">${audit.status === 'PASS' ? 'Fair' : 'Biased'}</span>
+            </div>
+        `;
+    });
+}
+
+function loadAuditFromHistory(id) {
+    const hist = getHistory();
+    const entry = hist.find(a => a.id === id);
+    if (!entry || !entry.auditData) {
+        alert("Full audit data not available for this entry.");
+        return;
+    }
+
+    const data = entry.auditData;
+    state.auditRun = true;
+    state.metricsBefore = data.metrics;
+    state.candidateIds = data.candidate_ids;
+    state.fullAuditData = data;
+    state.fileUploaded = true;
+    state.currentRows = entry.rowCount;
+
+    // Populate all tabs
+    updateAuditDashboard(data.metrics);
+    els.geminiExplanation.innerHTML = `<p>${data.explanation}</p>`;
+    els.geminiRootCause.innerHTML = `<p>${data.root_cause}</p>`;
+    renderFeatureImportance(data.feature_importances);
+    els.simCandidateSelect.innerHTML = '';
+    data.candidate_ids.forEach(cid => {
+        els.simCandidateSelect.add(new Option(`Candidate ${cid}`, cid));
+    });
+
+    // Enable nav
+    ['nav-audit', 'nav-explain', 'nav-whatif', 'nav-impact'].forEach(nid => {
+        document.getElementById(nid).classList.remove('disabled');
+    });
+
+    els.statusBadge.textContent = data.metrics.status === "FAIL" ? "Bias Detected" : "Fairness Passed";
+    els.statusBadge.className = `badge status-${data.metrics.status.toLowerCase()}`;
+    
+    // Smart routing
+    const targetHash = data.metrics.status === "FAIL" ? 'audit' : (data.metrics.bias_score > 0.05 ? 'audit' : 'explain');
+    window.location.hash = targetHash;
+    alert(`Opened audit for ${entry.datasetName} at ${targetHash.toUpperCase()} section.`);
+}
+
+// --- Exports ---
+
+if (els.btnExportJson) {
+    els.btnExportJson.addEventListener('click', () => {
+        if (!state.fullAuditData) return;
+        const exportData = {
+            generatedAt: new Date().toISOString(),
+            dataset: {
+                name: state.uploadedFiles[state.activeFileIndex]?.name || 'sample',
+                rows: state.currentRows,
+                target: els.targetCol.value,
+                sensitive: els.sensitiveCol.value
+            },
+            audit: state.fullAuditData
+        };
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `fairhire-audit-${exportData.dataset.name.split('.')[0]}-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    });
+}
+
+if (els.btnExportCsv) {
+    els.btnExportCsv.addEventListener('click', () => {
+        if (!state.metricsBefore) return;
+        const m = state.metricsBefore;
+        const datasetName = state.uploadedFiles[state.activeFileIndex]?.name || 'sample';
+        
+        let csv = '\ufeffsection,key,value\n';
+        csv += `summary,bias_score,${Math.round(m.demographic_parity_gap * 100)}\n`;
+        csv += `summary,status,${m.status}\n`;
+        csv += `summary,dataset,${datasetName}\n`;
+        csv += `summary,target,${els.targetCol.value}\n`;
+        csv += `summary,sensitive,${els.sensitiveCol.value}\n`;
+        
+        Object.entries(m.selection_rates).forEach(([group, rate]) => {
+            csv += `group_rate,${group},${Math.round(rate * 100)}\n`;
+        });
+        
+        if (state.metricsAfter) {
+            csv += `before_after,bias_gap_before,${Math.round(state.metricsBefore.demographic_parity_gap * 100)}\n`;
+            csv += `before_after,bias_gap_after,${Math.round(state.metricsAfter.demographic_parity_gap * 100)}\n`;
+        }
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `fairhire-audit-${datasetName.split('.')[0]}-${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
     });
 }
 
@@ -662,6 +829,13 @@ if (els.btnDownloadPdf) {
         els.pdfBtnText.textContent = 'Generating PDF...';
 
         try {
+            // Capture chart as PNG
+            let chartPng = null;
+            const chartContainer = document.getElementById('selection-chart-container');
+            if (window.htmlToImage && chartContainer) {
+                chartPng = await window.htmlToImage.toPng(chartContainer, { backgroundColor: '#0f172a' });
+            }
+
             // Collect all audit data from state and DOM
             const explanationEl = document.getElementById('gemini-explanation');
             const rootCauseEl = document.getElementById('gemini-root-cause');
@@ -710,10 +884,11 @@ if (els.btnDownloadPdf) {
                 columns: els.targetCol.options.length || '?',
                 targetCol: els.targetCol.value || 'hired',
                 sensitiveCol: els.sensitiveCol.value || 'gender',
+                rowCountEstimate: state.currentRows || 25
             };
 
             // Generate and download
-            const fileName = generateImpactPdf(audit, dataset);
+            const fileName = generateImpactPdf(audit, dataset, chartPng);
             console.log('PDF downloaded:', fileName);
 
             // Brief success toast
