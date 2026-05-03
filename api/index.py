@@ -7,6 +7,10 @@ import pandas as pd
 import io
 import os
 import json
+import sys
+
+# Import engine modules (Vercel requires api/ to be in sys.path)
+sys.path.insert(0, os.path.dirname(__file__))
 
 from bias_engine import train_model, compute_bias_metrics, get_feature_importance, apply_reweighting
 from gemini_engine import explain_bias, simulate_whatif, analyze_root_cause
