@@ -79,10 +79,11 @@
                             <p class="file-hint">Supported: .csv (Max 50MB)</p>
                             <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color); width: 100%; text-align: center;">
                                 <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 8px;">or try instantly with built-in data</p>
-                                <button class="btn" id="btn-sample-demo" style="background: transparent; border: 1px solid var(--accent); color: var(--accent); padding: 8px 24px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
+                                <button class="btn" id="btn-sample-demo" style="background: transparent; border: 1px solid var(--primary); color: var(--primary); padding: 8px 24px; font-weight: 500; display: inline-flex; align-items: center; gap: 6px;">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3h6v2H9z"/><path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg>
                                     Use Sample Dataset
                                 </button>
+                            </div>
                             </div>
                         </div>
                         
@@ -115,9 +116,26 @@
                                 <select id="sensitive-col" class="form-control"></select>
                                 <small>The demographic attribute to audit for fairness (e.g., gender, race, location).</small>
                             </div>
+                            <div class="form-group">
+                                <label for="bias-threshold">Bias Threshold</label>
+                                <select id="bias-threshold" class="form-control">
+                                    <option value="0.05">Strict (5%)</option>
+                                    <option value="0.1" selected>Standard (10%)</option>
+                                    <option value="0.15">Balanced (15%)</option>
+                                    <option value="0.2">Relaxed (20%)</option>
+                                </select>
+                                <small>The maximum allowable gap before a process is flagged as biased.</small>
+                            </div>
                             
-                            <button class="btn btn-primary btn-large w-100" id="btn-run-audit">Run Bias Audit</button>
-                        </div>
+                            <div id="validation-area" class="validation-area hidden mt-4">
+                                <ul id="validation-list" class="validation-list">
+                                    <!-- Checks appear here -->
+                                </ul>
+                            </div>
+                            
+                            <div class="mt-4">
+                                <button class="btn btn-primary btn-large w-100" id="btn-run-audit" disabled>Run Bias Audit</button>
+                            </div>
                     </div>
                 </section>
 
@@ -138,6 +156,29 @@
                             <div class="chart-container" id="selection-chart-container">
                                 <!-- Canvas inserted by JS -->
                             </div>
+                        </div>
+                    </div>
+                    
+                    <div class="compliance-grid mt-4">
+                        <div class="compliance-card" id="metric-dp">
+                            <div class="compliance-label">Demographic Parity</div>
+                            <div class="compliance-val">--%</div>
+                            <div class="badge">Awaiting</div>
+                        </div>
+                        <div class="compliance-card" id="metric-eo">
+                            <div class="compliance-label">Equal Opportunity</div>
+                            <div class="compliance-val">--%</div>
+                            <div class="badge">Awaiting</div>
+                        </div>
+                        <div class="compliance-card" id="metric-odds">
+                            <div class="compliance-label">Equalized Odds</div>
+                            <div class="compliance-val">--%</div>
+                            <div class="badge">Awaiting</div>
+                        </div>
+                        <div class="compliance-card" id="metric-eeoc">
+                            <div class="compliance-label">EEOC 4/5ths Rule</div>
+                            <div class="compliance-val">-- ratio</div>
+                            <div class="badge">Awaiting</div>
                         </div>
                     </div>
                     
@@ -207,6 +248,7 @@
                                     <div class="card-header">
                                         <div class="gemini-logo">✦</div>
                                         <h4>Gemini Simulation</h4>
+                                        <div id="sim-prob-badge" class="badge ml-auto hidden" style="background: rgba(20, 184, 166, 0.2); color: var(--primary);">0% Prob</div>
                                     </div>
                                     <div class="gemini-content" id="sim-explanation">
                                         <!-- Generated content -->
@@ -236,12 +278,12 @@
                             <div class="grid-2-col mt-4">
                                 <div class="metric-card before">
                                     <h4>Before Mitigation</h4>
-                                    <div class="huge-metric" id="metric-before">22% Gap</div>
+                                    <div class="huge-metric" id="metric-before">--% Gap</div>
                                     <div class="badge status-fail">Biased</div>
                                 </div>
                                 <div class="metric-card after">
                                     <h4>After Mitigation</h4>
-                                    <div class="huge-metric" id="metric-after">5% Gap</div>
+                                    <div class="huge-metric" id="metric-after">--% Gap</div>
                                     <div class="badge status-pass">Fair</div>
                                 </div>
                             </div>
@@ -332,10 +374,12 @@
         </main>
     </div>
 
+
+
     <script src="lib/jspdf.umd.min.js"></script>
     <script src="lib/jspdf.plugin.autotable.min.js"></script>
     <script src="lib/html-to-image.js"></script>
-    <script src="pdfReport.js"></script>
-    <script src="app.js"></script>
+    <script src="pdfReport.js?v=1.1"></script>
+    <script src="app.js?v=1.1"></script>
 </body>
 </html>

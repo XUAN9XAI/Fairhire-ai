@@ -101,7 +101,7 @@ function generateImpactPdf(audit, dataset, chartPng) {
     // ══════════════════════════════════════════════════════
     // 3. HERO STATUS CARD
     // ══════════════════════════════════════════════════════
-    const biasGap = audit.metrics ? audit.metrics.demographic_parity_gap : 0;
+    const biasGap = audit.metrics && audit.metrics.demographic_parity ? audit.metrics.demographic_parity.gap : 0;
     const biasPercent = Math.round(biasGap * 100);
     const status = audit.metrics ? audit.metrics.status : 'UNKNOWN';
     const isFail = status === 'FAIL';
@@ -129,7 +129,8 @@ function generateImpactPdf(audit, dataset, chartPng) {
     
     doc.setFontSize(11); doc.setFont('Helvetica', 'normal'); doc.setTextColor(30, 41, 59);
     const verdict = isFail ? "fails" : "passes";
-    const groups = Object.keys(audit.metrics.selection_rates);
+    const dpRates = (audit.metrics && audit.metrics.demographic_parity) ? audit.metrics.demographic_parity.rates : {};
+    const groups = Object.keys(dpRates);
     const topGroup = groups[0] || "Group A";
     const bottomGroup = groups[1] || "Group B";
     const summaryText = `This audit reviewed ${dataset.rowCountEstimate} candidates. The model's bias score is ${biasPercent}%, which ${verdict} our 10% fairness threshold. ${topGroup} candidates are selected ${biasPercent}% more often than ${bottomGroup} candidates.`;
@@ -141,7 +142,7 @@ function generateImpactPdf(audit, dataset, chartPng) {
     // ══════════════════════════════════════════════════════
     // 5. VISUAL EVIDENCE (Embedded Chart)
     // ══════════════════════════════════════════════════════
-    if (chartPng) {
+    if (chartPng && typeof chartPng === 'string' && chartPng.length > 100) {
         try {
             drawHeading('Visual Evidence (Selection Rates)');
             const imgW = CONTENT_W;
@@ -149,7 +150,6 @@ function generateImpactPdf(audit, dataset, chartPng) {
             checkBreak(imgH + 20);
             
             // Fix: jsPDF addImage handles data URLs better when format is explicitly provided
-            // or when the prefix is stripped. We'll provide the 'PNG' hint.
             doc.addImage(chartPng, 'PNG', MARGIN_X, y, imgW, imgH, undefined, 'FAST');
             
             y += imgH + 10;
@@ -158,9 +158,11 @@ function generateImpactPdf(audit, dataset, chartPng) {
             y += 30;
         } catch (e) {
             console.warn("Could not embed chart PNG in PDF:", e);
-            drawParagraph("(Visual chart could not be rendered in this report. Please refer to the live dashboard for interactive visualizations.)", 9, PDF_COLORS.muted, CONTENT_W);
+            drawParagraph("(Visual chart skipped due to rendering constraints. Refer to live dashboard for interactive view.)", 9, PDF_COLORS.muted, CONTENT_W);
             y += 20;
         }
+    } else if (chartPng) {
+        console.warn("Skipping invalid chart PNG data.");
     }
 
     // ══════════════════════════════════════════════════════
@@ -168,8 +170,8 @@ function generateImpactPdf(audit, dataset, chartPng) {
     // ══════════════════════════════════════════════════════
     if (audit.before && audit.after) {
         drawHeading('Mitigation Impact Analysis');
-        const beforeGap = Math.round(audit.before.demographic_parity_gap * 100);
-        const afterGap = Math.round(audit.after.demographic_parity_gap * 100);
+        const beforeGap = Math.round((audit.before.demographic_parity ? audit.before.demographic_parity.gap : 0) * 100);
+        const afterGap = Math.round((audit.after.demographic_parity ? audit.after.demographic_parity.gap : 0) * 100);
         doc.autoTable({
             startY: y, margin: { left: MARGIN_X, right: MARGIN_X },
             head: [['Metric', 'Before', 'After']],
@@ -206,10 +208,11 @@ function generateImpactPdf(audit, dataset, chartPng) {
     drawHeading('Appendix A \u2014 Raw Audit Data', 16, PDF_COLORS.primaryBlue);
     
     drawHeading('A.1 Group Selection Rates');
-    const groupRows = Object.entries(audit.metrics.selection_rates).map(([g, r]) => [g, `${(r * 100).toFixed(1)}%`, 'N/A']);
+    const dpRatesRaw = (audit.metrics && audit.metrics.demographic_parity) ? audit.metrics.demographic_parity.rates : {};
+    const groupRows = Object.entries(dpRatesRaw).map(([g, r]) => [g, `${((r.rate || 0) * 100).toFixed(1)}%`, r.count || 'N/A']);
     doc.autoTable({
         startY: y, margin: { left: MARGIN_X, right: MARGIN_X },
-        head: [['Group', 'Selection Rate (%)', 'Sample Share (%)']],
+        head: [['Group', 'Selection Rate (%)', 'Sample Count (N)']],
         body: groupRows,
         headStyles: { fillColor: PDF_COLORS.primaryBlue },
         theme: 'striped'

@@ -55,15 +55,28 @@ def _call_gemini(client, prompt, max_retries=1):
 
 def explain_bias(metrics):
     """Generates a plain-English explanation of the bias metrics."""
-    rates_str = ", ".join([f"{k}: {v:.1%}" for k, v in metrics['selection_rates'].items()])
-    fallback = f"Bias analysis complete. The demographic parity gap is {metrics['demographic_parity_gap']:.1%}. Selection rates are: {rates_str}. "
+    # Extract selection rates from the new nested structure
+    dp = metrics.get('demographic_parity', {})
+    rates = dp.get('rates', {})
+    # rates is now {group: {rate, count, ci}} — extract flat rates
+    flat_rates = {}
+    for k, v in rates.items():
+        if isinstance(v, dict):
+            flat_rates[k] = v.get('rate', 0)
+        else:
+            flat_rates[k] = v
     
-    if metrics['status'] == 'FAIL':
-        # Find which group has the highest and lowest rate
-        sorted_rates = sorted(metrics['selection_rates'].items(), key=lambda x: x[1], reverse=True)
+    dp_gap = metrics.get('demographic_parity_gap', 0)
+    status = metrics.get('status', 'UNKNOWN')
+    
+    rates_str = ", ".join([f"{k}: {v:.1%}" for k, v in flat_rates.items()])
+    fallback = f"Bias analysis complete. The demographic parity gap is {dp_gap:.1%}. Selection rates are: {rates_str}. "
+    
+    if status == 'FAIL':
+        sorted_rates = sorted(flat_rates.items(), key=lambda x: x[1], reverse=True)
         fallback += f"The group '{sorted_rates[0][0]}' has a significantly higher selection rate ({sorted_rates[0][1]:.1%}) compared to '{sorted_rates[-1][0]}' ({sorted_rates[-1][1]:.1%}). This indicates potential discrimination in the hiring process."
     else:
-        fallback += "The gap is within acceptable limits (< 10%), suggesting relatively fair outcomes across groups."
+        fallback += "The gap is within acceptable limits, suggesting relatively fair outcomes across groups."
     
     client = get_client()
     if not client:
@@ -75,11 +88,11 @@ def explain_bias(metrics):
     Explain the following bias result in simple, human-friendly language for a non-technical HR audience.
 
     Data:
-    - Status: {metrics['status']}
-    - Gap (Difference in selection rates): {metrics['demographic_parity_gap'] * 100:.1f}%
+    - Status: {status}
+    - Gap (Difference in selection rates): {dp_gap * 100:.1f}%
     - Selection Rates by Group:
     """
-    for group, rate in metrics['selection_rates'].items():
+    for group, rate in flat_rates.items():
          prompt += f"  - {group}: {rate * 100:.1f}%\n"
 
     prompt += """

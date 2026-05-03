@@ -24,6 +24,7 @@ const els = {
     targetCol: document.getElementById('target-col'),
     sensitiveCol: document.getElementById('sensitive-col'),
     fileNameDisplay: document.getElementById('file-name-display'),
+    biasThreshold: document.getElementById('bias-threshold'),
     btnRunAudit: document.getElementById('btn-run-audit'),
     biasScoreDisplay: document.getElementById('bias-score-display'),
     biasStatusDisplay: document.getElementById('bias-status-display'),
@@ -33,7 +34,14 @@ const els = {
     geminiRootCause: document.getElementById('gemini-root-cause'),
     simCandidateSelect: document.getElementById('sim-candidate-select'),
     simTargetGroup: document.getElementById('sim-target-group'),
+    simProbBadge: document.getElementById('sim-prob-badge'),
     btnSimulate: document.getElementById('btn-simulate'),
+    
+    // Compliance Metrics
+    metricDP: document.getElementById('metric-dp'),
+    metricEO: document.getElementById('metric-eo'),
+    metricOdds: document.getElementById('metric-odds'),
+    metricEEOC: document.getElementById('metric-eeoc'),
     simResults: document.getElementById('sim-results'),
     simProfileDetails: document.getElementById('sim-profile-details'),
     simExplanation: document.getElementById('sim-explanation'),
@@ -51,6 +59,8 @@ const els = {
     historyTableBody: document.getElementById('history-table-body'),
     noHistoryMsg: document.getElementById('no-history-msg'),
     fileInputAdd: document.getElementById('file-input-add'),
+    validationArea: document.getElementById('validation-area'),
+    validationList: document.getElementById('validation-list'),
     btnSampleDemo: document.getElementById('btn-sample-demo'),
     btnDownloadPdf: document.getElementById('btn-download-pdf'),
     pdfBtnText: document.getElementById('pdf-btn-text'),
@@ -87,6 +97,11 @@ function switchTab(tabId) {
     
     if (tabId === 'history') {
         renderHistory();
+    }
+    
+    // Redraw chart when audit tab becomes visible (canvas needs visible container for dimensions)
+    if (tabId === 'audit' && state.metricsBefore) {
+        setTimeout(() => drawSelectionChart(state.metricsBefore), 50);
     }
 }
 
@@ -251,23 +266,20 @@ async function uploadActiveFileToBackend() {
         if (!response.ok) throw new Error(await response.text());
         
         const data = await response.json();
+        state.currentRows = data.rows;
         
         // Populate dropdowns
-        els.targetCol.innerHTML = '';
-        els.sensitiveCol.innerHTML = '';
+        els.targetCol.innerHTML = '<option value="" disabled selected>Select Target Column</option>';
+        els.sensitiveCol.innerHTML = '<option value="" disabled selected>Select Sensitive Attribute</option>';
         
         data.columns.forEach(col => {
             els.targetCol.add(new Option(col, col));
             els.sensitiveCol.add(new Option(col, col));
         });
         
-        // Smart defaults based on our sample data
-        if(data.columns.includes('hired')) els.targetCol.value = 'hired';
-        if(data.columns.includes('gender')) els.sensitiveCol.value = 'gender';
-        
-        els.fileNameDisplay.textContent = state.uploadedFiles.length > 1 
-            ? `${state.uploadedFiles.length} dataset(s) loaded` 
-            : `${file.name} loaded (${data.rows} rows)`;
+        els.configArea.classList.remove('hidden');
+        els.dropZone.classList.add('hidden');
+        els.fileNameDisplay.textContent = `${file.name} loaded (${data.rows} rows)`;
             
         state.fileUploaded = true;
         state.currentRows = data.rows;
@@ -308,7 +320,11 @@ if (els.btnSampleDemo) {
             state.auditRun = true;
             state.metricsBefore = data.metrics;
             state.candidateIds = data.candidate_ids;
+            state.fullAuditData = data;
             
+            // Fetch AI Explanation separately
+            fetchAIExplanation(data.metrics, data.feature_importances);
+
             // Hide upload area, show config as read-only indicator
             els.dropZone.classList.add('hidden');
             els.configArea.classList.remove('hidden');
@@ -342,10 +358,12 @@ if (els.btnSampleDemo) {
             
             // Save to History
             saveAuditToHistory({
+                id: Date.now().toString(),
                 date: new Date().toISOString(),
                 datasetName: '🧪 Sample Dataset (Prototype)',
                 targetCol: 'hired',
                 sensitiveCol: 'gender',
+                rowCount: 25,
                 biasGap: Math.round(data.metrics.demographic_parity_gap * 100),
                 status: data.metrics.status
             });
@@ -364,6 +382,8 @@ if (els.btnSampleDemo) {
 // --- Tab 2: Audit & Tab 3: Explain ---
 
 els.btnRunAudit.addEventListener('click', async () => {
+    if (els.btnRunAudit.disabled) return;
+    
     showLoader("Training Model & Detecting Bias...");
     
     const target = els.targetCol.value;
@@ -375,7 +395,8 @@ els.btnRunAudit.addEventListener('click', async () => {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 target_col: target,
-                sensitive_col: sensitive
+                sensitive_col: sensitive,
+                threshold: parseFloat(els.biasThreshold.value)
             })
         });
         
@@ -391,10 +412,8 @@ els.btnRunAudit.addEventListener('click', async () => {
         // Populate Tab 2
         updateAuditDashboard(data.metrics);
         
-        // Populate Tab 3
-        els.geminiExplanation.innerHTML = `<p>${data.explanation}</p>`;
-        els.geminiRootCause.innerHTML = `<p>${data.root_cause}</p>`;
-        renderFeatureImportance(data.feature_importances);
+        // Fetch AI Explanation separately (Task 1)
+        fetchAIExplanation(data.metrics, data.feature_importances);
         
         // Populate Tab 4
         els.simCandidateSelect.innerHTML = '';
@@ -428,11 +447,101 @@ els.btnRunAudit.addEventListener('click', async () => {
         
     } catch (err) {
         console.error(err);
-        alert("Failed to run audit: " + err.message);
+        alert("Audit failed: " + err.message);
     } finally {
         hideLoader();
     }
 });
+
+async function validateCSVConfig() {
+    const target = els.targetCol.value;
+    const sensitive = els.sensitiveCol.value;
+    
+    if (!target || !sensitive) {
+        els.btnRunAudit.disabled = true;
+        return;
+    }
+
+    els.validationArea.classList.remove('hidden');
+    els.validationList.innerHTML = '<li><div class="loader-inline"></div> Validating data patterns...</li>';
+    els.btnRunAudit.disabled = true;
+
+    try {
+        const response = await fetch(`${API_BASE}/validate`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                target_col: target,
+                sensitive_col: sensitive
+            })
+        });
+        
+        const data = await response.json();
+        els.validationList.innerHTML = '';
+        
+        let allPass = true;
+        
+        data.checks.forEach(check => {
+            const li = document.createElement('li');
+            li.className = check.pass ? 'pass' : 'fail';
+            li.innerHTML = `
+                <span class="icon">${check.pass ? '?' : '?'}</span>
+                <span class="msg">${check.message}</span>
+            `;
+            els.validationList.appendChild(li);
+            if (!check.pass) allPass = false;
+        });
+
+        els.btnRunAudit.disabled = !allPass;
+        if (allPass) {
+            const li = document.createElement('li');
+            li.className = 'pass-all';
+            li.innerHTML = '<strong>? Validation Passed.</strong> Model is ready for audit.';
+            els.validationList.appendChild(li);
+        }
+
+    } catch (err) {
+        els.validationList.innerHTML = `<li class="fail">Validation error: ${err.message}</li>`;
+    }
+}
+
+// Listen for config changes
+els.targetCol.addEventListener('change', validateCSVConfig);
+els.sensitiveCol.addEventListener('change', validateCSVConfig);
+
+async function fetchAIExplanation(metrics, featureImportances) {
+    els.geminiExplanation.innerHTML = '<div class="loader-inline"></div><p>Gemini is analyzing bias patterns...</p>';
+    els.geminiRootCause.innerHTML = '<div class="loader-inline"></div><p>Identifying proxy variables...</p>';
+    
+    try {
+        const response = await fetch(`${API_BASE}/explain`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                metrics: metrics,
+                feature_importances: featureImportances
+            })
+        });
+        
+        if (!response.ok) throw new Error("AI Explanation failed");
+        
+        const data = await response.json();
+        els.geminiExplanation.innerHTML = `<p>${data.explanation}</p>`;
+        els.geminiRootCause.innerHTML = `<p>${data.root_cause}</p>`;
+        renderFeatureImportance(featureImportances);
+        
+        // Update stored data if needed
+        if (state.fullAuditData) {
+            state.fullAuditData.explanation = data.explanation;
+            state.fullAuditData.root_cause = data.root_cause;
+        }
+    } catch (err) {
+        console.error(err);
+        els.geminiExplanation.innerHTML = '<p class="text-error">AI Explanation unavailable. Please check your connection or API key status.</p>';
+        els.geminiRootCause.innerHTML = '<p class="text-error">Could not analyze root cause.</p>';
+        renderFeatureImportance(featureImportances);
+    }
+}
 
 // --- History Storage & Rendering ---
 function getHistory() {
@@ -451,45 +560,68 @@ function saveAuditToHistory(auditRecord) {
     localStorage.setItem('fairhire_history', JSON.stringify(limitedHist));
 }
 
-function renderHistory() {
+async function renderHistory() {
     if (!els.historyTableBody) return;
-    const hist = getHistory();
     
-    if (hist.length === 0) {
-        els.historyTableBody.innerHTML = '';
-        els.noHistoryMsg.style.display = 'block';
-        return;
-    }
+    els.historyTableBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 2rem;"><div class="loader-inline" style="margin: 0 auto;"></div> Fetching history from database...</td></tr>';
     
-    els.noHistoryMsg.style.display = 'none';
-    els.historyTableBody.innerHTML = '';
-    
-    hist.forEach(audit => {
-        const d = new Date(audit.date);
-        const isPass = audit.status === "PASS";
-        const tr = document.createElement('tr');
-        tr.style.borderBottom = "1px solid var(--border-color)";
-        tr.innerHTML = `
-            <td style="padding: 12px;"><input type="checkbox" class="compare-checkbox" data-id="${audit.id || ''}"></td>
-            <td style="padding: 12px; font-size: 0.9rem;">${d.toLocaleDateString()}</td>
-            <td style="padding: 12px; font-weight: 500;" title="${audit.datasetName}">${audit.datasetName.substring(0, 20)}${audit.datasetName.length > 20 ? '...' : ''}</td>
-            <td style="padding: 12px; font-size: 0.9rem; color: var(--text-muted);">${audit.targetCol} / ${audit.sensitiveCol}</td>
-            <td style="padding: 12px; font-size: 0.9rem;">${audit.rowCount || '—'}</td>
-            <td style="padding: 12px; font-weight: bold;">${audit.biasGap}%</td>
-            <td style="padding: 12px;">
-                <button class="btn btn-sm btn-open-audit" data-id="${audit.id || ''}" style="padding: 4px 8px; font-size: 0.75rem;">Open</button>
-            </td>
-        `;
-        els.historyTableBody.appendChild(tr);
-    });
+    try {
+        const response = await fetch(`${API_BASE}/history`);
+        const serverHist = await response.json();
+        
+        // Merge with local history for seamless transition
+        const localHist = getHistory();
+        let combined = [...serverHist.map(h => ({
+            id: h.id,
+            date: h.created_at,
+            datasetName: h.datasets ? h.datasets.filename : 'Unknown Dataset',
+            targetCol: h.metrics.target_col || '—',
+            sensitiveCol: h.metrics.sensitive_col || '—',
+            rowCount: h.metrics.row_count || '—',
+            biasGap: Math.round((h.metrics.demographic_parity_gap || 0) * 100),
+            status: h.metrics.status,
+            fullData: h
+        })), ...localHist];
 
-    // Add listeners for checkboxes and open button
-    document.querySelectorAll('.compare-checkbox').forEach(cb => {
-        cb.addEventListener('change', updateHistoryComparison);
-    });
-    document.querySelectorAll('.btn-open-audit').forEach(btn => {
-        btn.addEventListener('click', (e) => loadAuditFromHistory(e.target.dataset.id));
-    });
+        // Deduplicate by date/name if needed, but for now just show all
+        if (combined.length === 0) {
+            els.historyTableBody.innerHTML = '';
+            els.noHistoryMsg.style.display = 'block';
+            return;
+        }
+        
+        els.noHistoryMsg.style.display = 'none';
+        els.historyTableBody.innerHTML = '';
+        
+        combined.forEach(audit => {
+            const d = new Date(audit.date);
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = "1px solid var(--border-color)";
+            tr.innerHTML = `
+                <td style="padding: 12px;"><input type="checkbox" class="compare-checkbox" data-id="${audit.id || ''}"></td>
+                <td style="padding: 12px; font-size: 0.9rem;">${d.toLocaleDateString()}</td>
+                <td style="padding: 12px; font-weight: 500;" title="${audit.datasetName}">${audit.datasetName.substring(0, 20)}${audit.datasetName.length > 20 ? '...' : ''}</td>
+                <td style="padding: 12px; font-size: 0.9rem; color: var(--text-muted);">${audit.targetCol} / ${audit.sensitiveCol}</td>
+                <td style="padding: 12px; font-size: 0.9rem;">${audit.rowCount}</td>
+                <td style="padding: 12px; font-weight: bold;">${audit.biasGap}%</td>
+                <td style="padding: 12px;">
+                    <button class="btn btn-sm btn-open-audit" data-id="${audit.id || ''}" style="padding: 4px 8px; font-size: 0.75rem;">Open</button>
+                </td>
+            `;
+            els.historyTableBody.appendChild(tr);
+        });
+
+        // Add listeners
+        document.querySelectorAll('.compare-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => updateHistoryComparison(combined));
+        });
+        document.querySelectorAll('.btn-open-audit').forEach(btn => {
+            btn.addEventListener('click', (e) => loadAuditFromHistory(e.target.dataset.id, combined));
+        });
+
+    } catch (err) {
+        els.historyTableBody.innerHTML = `<tr><td colspan="7" style="color: var(--danger); text-align: center; padding: 1rem;">Failed to load history: ${err.message}</td></tr>`;
+    }
 }
 
 function updateHistoryComparison() {
@@ -588,9 +720,10 @@ function loadAuditFromHistory(id) {
 
     // Populate all tabs
     updateAuditDashboard(data.metrics);
-    els.geminiExplanation.innerHTML = `<p>${data.explanation}</p>`;
-    els.geminiRootCause.innerHTML = `<p>${data.root_cause}</p>`;
-    renderFeatureImportance(data.feature_importances);
+    
+    // Fetch AI Explanation if missing or just to refresh
+    fetchAIExplanation(data.metrics, data.feature_importances);
+    
     els.simCandidateSelect.innerHTML = '';
     data.candidate_ids.forEach(cid => {
         els.simCandidateSelect.add(new Option(`Candidate ${cid}`, cid));
@@ -660,7 +793,9 @@ document.addEventListener('click', (e) => {
         csv += `summary,target,${els.targetCol.value}\n`;
         csv += `summary,sensitive,${els.sensitiveCol.value}\n`;
         
-        Object.entries(m.selection_rates).forEach(([group, rate]) => {
+        const dpRates = m.demographic_parity ? m.demographic_parity.rates : {};
+        Object.entries(dpRates).forEach(([group, rateObj]) => {
+            const rate = typeof rateObj === 'object' ? rateObj.rate : rateObj;
             csv += `group_rate,${group},${Math.round(rate * 100)}\n`;
         });
         
@@ -701,23 +836,40 @@ function animateValue(obj, start, end, duration, formatFn = (x) => x) {
 
 function updateAuditDashboard(metrics) {
     // Score
-    const gapPercent = Math.round(metrics.demographic_parity_gap * 100);
+    const dp = metrics.demographic_parity;
+    const gapPercent = Math.round(dp.gap * 100);
     animateValue(els.biasScoreDisplay, 0, gapPercent, 1000, (v) => `${v}%`);
     
-    els.biasStatusDisplay.textContent = metrics.status;
+    els.biasStatusDisplay.textContent = metrics.status === "PASS" ? "FAIR OUTCOME" : "BIAS DETECTED";
     els.biasStatusDisplay.className = `bias-status status-${metrics.status.toLowerCase()}`;
     
-    // Draw simple canvas chart
+    // Update Compliance Grid
+    updateComplianceCard(els.metricDP, dp, "% Gap");
+    updateComplianceCard(els.metricEO, metrics.equal_opportunity, "% Gap");
+    updateComplianceCard(els.metricOdds, {gap: metrics.equalized_odds.gap, status: metrics.equalized_odds.status}, "% Gap");
+    updateComplianceCard(els.metricEEOC, {gap: metrics.eeoc_rule.ratio, status: metrics.eeoc_rule.status}, " ratio", true);
+    
+    // Draw chart (may be deferred if tab is hidden)
+    drawSelectionChart(metrics);
+}
+
+function drawSelectionChart(metrics) {
+    const dp = metrics.demographic_parity;
+    if (!dp || !dp.rates) return;
+    
     els.chartContainer.innerHTML = '<canvas id="selection-chart"></canvas>';
+    els.chartContainer.style.minHeight = '250px';
     const canvas = document.getElementById('selection-chart');
     const ctx = canvas.getContext('2d');
     
-    // Responsive canvas
-    canvas.width = els.chartContainer.clientWidth;
-    canvas.height = els.chartContainer.clientHeight;
+    // Use container dimensions, fallback to explicit values if tab hidden
+    const chartW = els.chartContainer.clientWidth || 500;
+    const chartH = Math.max(els.chartContainer.clientHeight, 250);
+    canvas.width = chartW;
+    canvas.height = chartH;
     
-    const groups = Object.keys(metrics.selection_rates);
-    const rates = Object.values(metrics.selection_rates).map(r => r * 100);
+    const groups = Object.keys(dp.rates);
+    const rates = Object.values(dp.rates);
     
     const barWidth = 80;
     const spacing = 60;
@@ -727,7 +879,8 @@ function updateAuditDashboard(metrics) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     
     groups.forEach((group, i) => {
-        const rate = rates[i];
+        const rateObj = rates[i];
+        const rate = rateObj.rate * 100;
         const h = (rate / 100) * maxH;
         const x = startX + i * (barWidth + spacing);
         const y = canvas.height - 20 - h;
@@ -738,6 +891,27 @@ function updateAuditDashboard(metrics) {
         ctx.roundRect(x, y, barWidth, h, [6, 6, 0, 0]);
         ctx.fill();
         
+        // Error Bars (CI)
+        if (rateObj.ci) {
+            const lowY = canvas.height - 20 - (rateObj.ci[0] * maxH);
+            const highY = canvas.height - 20 - (rateObj.ci[1] * maxH);
+            
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x + barWidth/2, lowY);
+            ctx.lineTo(x + barWidth/2, highY);
+            ctx.stroke();
+            
+            // T-caps
+            ctx.beginPath();
+            ctx.moveTo(x + barWidth/2 - 10, lowY);
+            ctx.lineTo(x + barWidth/2 + 10, lowY);
+            ctx.moveTo(x + barWidth/2 - 10, highY);
+            ctx.lineTo(x + barWidth/2 + 10, highY);
+            ctx.stroke();
+        }
+
         // Label Group
         ctx.fillStyle = '#94a3b8';
         ctx.font = '14px Inter';
@@ -749,6 +923,19 @@ function updateAuditDashboard(metrics) {
         ctx.font = 'bold 16px Inter';
         ctx.fillText(`${rate.toFixed(1)}%`, x + barWidth/2, y - 10);
     });
+}
+
+
+function updateComplianceCard(el, data, suffix, isRatio = false) {
+    if (!el) return;
+    const valEl = el.querySelector('.compliance-val');
+    const badgeEl = el.querySelector('.badge');
+    
+    let displayVal = isRatio ? data.gap.toFixed(2) : Math.round(data.gap * 100);
+    valEl.textContent = `${displayVal}${suffix}`;
+    
+    badgeEl.textContent = data.status;
+    badgeEl.className = `badge status-${data.status.toLowerCase()}`;
 }
 
 function renderFeatureImportance(features) {
@@ -800,18 +987,21 @@ els.btnSimulate.addEventListener('click', async () => {
         
         const data = await response.json();
         
-        // Render Profile
+        // Populate profile
         els.simProfileDetails.innerHTML = '';
-        Object.entries(data.candidate_data).forEach(([key, val]) => {
-            if (key !== 'candidate_id' && key !== 'hired') {
-                const li = document.createElement('li');
-                li.innerHTML = `<span>${key.replace(/_/g, ' ')}</span> <span>${val}</span>`;
-                els.simProfileDetails.appendChild(li);
-            }
+        Object.entries(data.candidate_data).forEach(([k, v]) => {
+            if (['candidate_id', 'hired'].includes(k)) return;
+            const li = document.createElement('li');
+            li.innerHTML = `<span>${k}</span> <span>${v}</span>`;
+            els.simProfileDetails.appendChild(li);
         });
         
-        // Render Explanation
         els.simExplanation.innerHTML = `<p>${data.whatif_explanation}</p>`;
+        
+        if (data.new_probability !== undefined) {
+            els.simProbBadge.textContent = `${data.new_probability}% Prob`;
+            els.simProbBadge.classList.remove('hidden');
+        }
         
         els.simResults.classList.remove('hidden');
         
@@ -847,11 +1037,24 @@ els.btnMitigate.addEventListener('click', async () => {
         state.metricsAfter = data.after;
         
         // Populate results
-        const gapBefore = Math.round(data.before.demographic_parity_gap * 100);
-        const gapAfter = Math.round(data.after.demographic_parity_gap * 100);
+        const gapBefore = Math.round((data.before.demographic_parity ? data.before.demographic_parity.gap : data.before.demographic_parity_gap) * 100);
+        const gapAfter = Math.round((data.after.demographic_parity ? data.after.demographic_parity.gap : data.after.demographic_parity_gap) * 100);
         
         els.metricBefore.textContent = `${gapBefore}% Gap`;
         els.metricAfter.textContent = `${gapAfter}% Gap`;
+        
+        // Update card badges to reflect actual status
+        const beforeBadge = els.mitigationResults.querySelector('.metric-card.before .badge');
+        const afterBadge = els.mitigationResults.querySelector('.metric-card.after .badge');
+        
+        if (beforeBadge) {
+            beforeBadge.textContent = data.before.status === 'PASS' ? 'Fair' : 'Biased';
+            beforeBadge.className = `badge ${data.before.status === 'PASS' ? 'status-pass' : 'status-fail'}`;
+        }
+        if (afterBadge) {
+            afterBadge.textContent = data.after.status === 'PASS' ? 'Fair' : 'Biased';
+            afterBadge.className = `badge ${data.after.status === 'PASS' ? 'status-pass' : 'status-fail'}`;
+        }
         
         els.mitigationResults.classList.remove('hidden');
         els.statusBadge.textContent = "Fairness Mitigated";
@@ -884,8 +1087,15 @@ if (els.btnDownloadPdf) {
                 chartPng = await window.htmlToImage.toPng(chartContainer, { 
                     backgroundColor: '#0f172a',
                     cacheBust: true,
-                    pixelRatio: 2 
+                    pixelRatio: 1.5,
+                    fontEmbedCSS: '' // Skip font embedding to avoid CORS/security errors
                 });
+                
+                // Validate PNG signature (simplified)
+                if (chartPng && !chartPng.startsWith('data:image/png;base64,iVBORw0KG')) {
+                    console.warn("Invalid PNG signature from htmlToImage, skipping chart embed.");
+                    chartPng = null;
+                }
             }
 
             // Collect all audit data from state and DOM
@@ -909,8 +1119,8 @@ if (els.btnDownloadPdf) {
             // Build mitigation narrative
             let mitigationText = '';
             if (state.metricsBefore && state.metricsAfter) {
-                const gBefore = Math.round(state.metricsBefore.demographic_parity_gap * 100);
-                const gAfter = Math.round(state.metricsAfter.demographic_parity_gap * 100);
+                const gBefore = Math.round((state.metricsBefore.demographic_parity ? state.metricsBefore.demographic_parity.gap : state.metricsBefore.demographic_parity_gap) * 100);
+                const gAfter = Math.round((state.metricsAfter.demographic_parity ? state.metricsAfter.demographic_parity.gap : state.metricsAfter.demographic_parity_gap) * 100);
                 mitigationText = `The reweighting algorithm reduced the bias gap from ${gBefore}% to ${gAfter}%. `;
                 if (state.metricsAfter.status === 'PASS') {
                     mitigationText += 'The model now meets fairness thresholds and is ready for production deployment with ethical constraints applied.';

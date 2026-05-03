@@ -45,45 +45,116 @@ def train_model(df, target_col, sensitive_col, sample_weight=None):
     
     return clf, predictions, encoders, features
 
-def compute_bias_metrics(df, sensitive_col, predictions):
-    """Calculates selection rate and demographic parity gap."""
+def calculate_wilson_ci(p, n, z=1.96):
+    """Calculates 95% Wilson confidence interval."""
+    if n == 0: return [0, 0]
+    denom = 1 + z**2/n
+    center = (p + z**2/(2*n)) / denom
+    spread = z * np.sqrt(p*(1-p)/n + z**2/(4*n**2)) / denom
+    return [max(0, center - spread), min(1, center + spread)]
+
+def compute_bias_metrics(df, target_col, sensitive_col, predictions, threshold=0.1):
+    """Calculates multiple fairness metrics."""
     groups = df[sensitive_col].unique()
-    metrics = {}
+    y_true = df[target_col]
     
     df_eval = pd.DataFrame({
         'group': df[sensitive_col],
+        'target': y_true,
         'prediction': predictions
     })
     
+    # Identify the majority group (one with highest selection rate) for 4/5ths rule
     selection_rates = {}
+    tpr_rates = {}
+    fpr_rates = {}
+    
     for g in groups:
-        # Selection rate = Positive predictions / Total predictions for the group
         group_df = df_eval[df_eval['group'] == g]
         if len(group_df) > 0:
-            rate = group_df['prediction'].mean()
-            selection_rates[str(g)] = float(rate)
+            # Selection Rate
+            n = len(group_df)
+            p = float(group_df['prediction'].mean())
+            selection_rates[str(g)] = {
+                "rate": p,
+                "count": n,
+                "ci": calculate_wilson_ci(p, n)
+            }
+            
+            # TPR (True Positive Rate) - P(pred=1 | actual=1)
+            positives = group_df[group_df['target'] == 1]
+            if len(positives) > 0:
+                tpr_rates[str(g)] = float(positives['prediction'].mean())
+            else:
+                tpr_rates[str(g)] = 0.0
+                
+            # FPR (False Positive Rate) - P(pred=1 | actual=0)
+            negatives = group_df[group_df['target'] == 0]
+            if len(negatives) > 0:
+                fpr_rates[str(g)] = float(negatives['prediction'].mean())
+            else:
+                fpr_rates[str(g)] = 0.0
         else:
-            selection_rates[str(g)] = 0.0
+            selection_rates[str(g)] = {"rate": 0.0, "count": 0, "ci": [0, 0]}
+            tpr_rates[str(g)] = 0.0
+            fpr_rates[str(g)] = 0.0
             
     if not selection_rates:
          return {"error": "No groups found"}
 
-    max_rate = max(selection_rates.values())
-    min_rate = min(selection_rates.values())
+    # 1. Demographic Parity Gap
+    rates_vals = [r['rate'] for r in selection_rates.values()]
+    dp_gap = max(rates_vals) - min(rates_vals)
     
-    gap = max_rate - min_rate
+    # 2. Equal Opportunity Gap (TPR diff)
+    eo_gap = max(tpr_rates.values()) - min(tpr_rates.values())
     
-    # Bias score normalized (0 is perfect parity)
-    bias_score = gap
+    # 3. Equalized Odds Gap (Avg of TPR diff and FPR diff)
+    fpr_gap = max(fpr_rates.values()) - min(fpr_rates.values())
+    odds_gap = (eo_gap + fpr_gap) / 2
     
-    # Simple threshold: if gap > 0.1 (10%), it fails
-    status = "FAIL" if gap > 0.1 else "PASS"
+    # 4. EEOC 4/5ths Rule (Ratio)
+    # Ratio of min selection rate to max selection rate
+    advantaged_group = max(selection_rates, key=lambda k: selection_rates[k]['rate'])
+    advantaged_rate = selection_rates[advantaged_group]['rate']
+    
+    impact_ratios = {}
+    for g, r_obj in selection_rates.items():
+        rate = r_obj['rate']
+        if advantaged_rate > 0:
+            impact_ratios[g] = rate / advantaged_rate
+        else:
+            impact_ratios[g] = 1.0
+            
+    min_impact_ratio = min(impact_ratios.values())
+    
+    # Status badges
+    status_dp = "PASS" if dp_gap <= threshold else "FAIL"
+    status_eo = "PASS" if eo_gap <= threshold else "FAIL"
+    status_eeoc = "PASS" if min_impact_ratio >= 0.8 else "FAIL"
     
     return {
-        "bias_score": float(bias_score),
-        "status": status,
-        "selection_rates": selection_rates,
-        "demographic_parity_gap": float(gap)
+        "status": "FAIL" if (status_dp == "FAIL" or status_eeoc == "FAIL") else "PASS",
+        "demographic_parity": {
+            "gap": float(dp_gap),
+            "status": status_dp,
+            "rates": selection_rates
+        },
+        "equal_opportunity": {
+            "gap": float(eo_gap),
+            "status": status_eo,
+            "rates": tpr_rates
+        },
+        "equalized_odds": {
+            "gap": float(odds_gap),
+            "status": "PASS" if odds_gap <= threshold else "FAIL"
+        },
+        "eeoc_rule": {
+            "ratio": float(min_impact_ratio),
+            "status": status_eeoc,
+            "impact_ratios": impact_ratios
+        },
+        "demographic_parity_gap": float(dp_gap) # Legacy support
     }
 
 def get_feature_importance(model, feature_names):
