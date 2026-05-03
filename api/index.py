@@ -105,7 +105,7 @@ def _run_audit_pipeline(df, target_col, sensitive_col, threshold=0.1, mode="stan
             "feature_importances": feature_importances[:5],
             "candidate_ids": candidate_ids,
             "mode": mode,
-            "rows": df.to_dict('records')
+            "rows": df.where(pd.notnull(df), None).to_dict('records')
         }
         return result
 
