@@ -1015,56 +1015,102 @@ els.btnSimulate.addEventListener('click', async () => {
 
 // --- Tab 5: Mitigation ---
 
+function applyReweighting(rows, targetCol, sensitiveAttr) {
+  const N = rows.length;
+  const groupCounts = {};
+  rows.forEach(r => {
+    const g = r[sensitiveAttr];
+    groupCounts[g] = (groupCounts[g] || 0) + 1;
+  });
+  const K = Object.keys(groupCounts).length;
+  const weighted = rows.map(r => ({
+    ...r,
+    _weight: N / (K * groupCounts[r[sensitiveAttr]])
+  }));
+  const weightedRates = {};
+  Object.keys(groupCounts).forEach(g => {
+    const gRows = weighted.filter(r => r[sensitiveAttr] === g);
+    const sumW = gRows.reduce((s, r) => s + r._weight, 0);
+    const sumH = gRows.reduce((s, r) => s + r._weight * Number(r[targetCol]), 0);
+    weightedRates[g] = sumH / sumW;
+  });
+  const rates = Object.values(weightedRates);
+  return Math.round((Math.max(...rates) - Math.min(...rates)) * 100);
+}
+
 els.btnMitigate.addEventListener('click', async () => {
+    els.btnMitigate.disabled = true;
     showLoader("Applying Reweighting Algorithm...");
     
     try {
-        const response = await fetch(`${API_BASE}/mitigate`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                target_col: els.targetCol.value,
-                sensitive_col: els.sensitiveCol.value
-            })
-        });
+        await new Promise(r => setTimeout(r, 300));
         
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(errText);
+        if (!state.fullAuditData || !state.fullAuditData.rows) {
+            throw new Error("No dataset available for mitigation. Please run an audit first.");
         }
         
-        const data = await response.json();
-        state.metricsAfter = data.after;
+        const rows = state.fullAuditData.rows;
+        const targetCol = els.targetCol.value;
+        const sensitiveCol = els.sensitiveCol.value;
         
-        // Populate results
-        const gapBefore = Math.round((data.before.demographic_parity ? data.before.demographic_parity.gap : data.before.demographic_parity_gap) * 100);
-        const gapAfter = Math.round((data.after.demographic_parity ? data.after.demographic_parity.gap : data.after.demographic_parity_gap) * 100);
+        // Problem 1: beforeGap from previously computed state
+        const beforeGap = Math.round((state.metricsBefore.demographic_parity ? state.metricsBefore.demographic_parity.gap : state.metricsBefore.demographic_parity_gap) * 100);
         
-        els.metricBefore.textContent = `${gapBefore}% Gap`;
-        els.metricAfter.textContent = `${gapAfter}% Gap`;
+        // Problem 1: afterGap using applyReweighting
+        const afterGap = applyReweighting(rows, targetCol, sensitiveCol);
         
-        // Update card badges to reflect actual status
+        // Update state so PDF export can pick it up
+        if (!state.metricsAfter) {
+            state.metricsAfter = { ...state.metricsBefore };
+        }
+        if (!state.metricsAfter.demographic_parity) {
+             state.metricsAfter.demographic_parity = {};
+        }
+        state.metricsAfter.demographic_parity.gap = afterGap / 100;
+        state.metricsAfter.demographic_parity_gap = afterGap / 100;
+        
+        els.metricBefore.textContent = `${beforeGap}% Gap`;
+        els.metricAfter.textContent = `${afterGap}% Gap`;
+        
+        // Problem 3: After Mitigation badge color
+        const THRESHOLD = 10;
         const beforeBadge = els.mitigationResults.querySelector('.metric-card.before .badge');
         const afterBadge = els.mitigationResults.querySelector('.metric-card.after .badge');
         
         if (beforeBadge) {
-            beforeBadge.textContent = data.before.status === 'PASS' ? 'Fair' : 'Biased';
-            beforeBadge.className = `badge ${data.before.status === 'PASS' ? 'status-pass' : 'status-fail'}`;
+            beforeBadge.textContent = beforeGap <= THRESHOLD ? 'Fair' : 'Biased';
+            beforeBadge.className = `badge ${beforeGap <= THRESHOLD ? 'status-pass' : 'status-fail'}`;
         }
         if (afterBadge) {
-            afterBadge.textContent = data.after.status === 'PASS' ? 'Fair' : 'Biased';
-            afterBadge.className = `badge ${data.after.status === 'PASS' ? 'status-pass' : 'status-fail'}`;
+            afterBadge.textContent = afterGap <= THRESHOLD ? 'Fair' : 'Biased';
+            afterBadge.className = `badge ${afterGap <= THRESHOLD ? 'status-pass' : 'status-fail'}`;
+        }
+        
+        // Problem 2: Dynamic Success banner
+        const banner = document.querySelector('.success-banner');
+        if (banner) {
+            if (afterGap <= THRESHOLD) {
+                banner.className = 'success-banner banner-success mt-4';
+                banner.textContent = '✓ Bias successfully mitigated. Dataset meets the fairness threshold.';
+            } else if (afterGap < beforeGap) {
+                banner.className = 'success-banner banner-warn mt-4';
+                banner.textContent = `⚠ Gap reduced from ${beforeGap}% to ${afterGap}% but still above threshold. See options below.`;
+            } else {
+                banner.className = 'success-banner banner-error mt-4';
+                banner.textContent = `✗ Reweighting was insufficient. Gap remains at ${afterGap}%. See options below.`;
+            }
         }
         
         els.mitigationResults.classList.remove('hidden');
-        els.statusBadge.textContent = "Fairness Mitigated";
-        els.statusBadge.className = "badge status-pass";
+        els.statusBadge.textContent = afterGap <= THRESHOLD ? "Fairness Mitigated" : "Mitigation Failed";
+        els.statusBadge.className = `badge ${afterGap <= THRESHOLD ? 'status-pass' : 'status-fail'}`;
         
     } catch (err) {
         console.error(err);
         alert("Mitigation failed: " + err.message);
     } finally {
         hideLoader();
+        els.btnMitigate.disabled = false;
     }
 });
 

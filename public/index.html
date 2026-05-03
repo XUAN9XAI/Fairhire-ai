@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FairHire AI | Hiring Bias Auditor</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.2">
 </head>
 <body>
     <div class="app-container">
@@ -371,6 +371,201 @@
                 <h3 id="loader-text">Processing...</h3>
             </div>
             
+                            <div class="compliance-label">EEOC 4/5ths Rule</div>
+                            <div class="compliance-val">-- ratio</div>
+                            <div class="badge">Awaiting</div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-footer">
+                        <button class="btn btn-primary btn-large" onclick="window.location.hash='explain'">Get AI Explanation</button>
+                    </div>
+                </section>
+
+                <!-- Tab 3: AI Explanation -->
+                <section id="tab-explain" class="tab-content">
+                    <div class="grid-2-col">
+                        <div class="card glass-card gemini-card">
+                            <div class="card-header">
+                                <div class="gemini-logo">✦</div>
+                                <h3>Gemini Analysis</h3>
+                            </div>
+                            <div class="gemini-content" id="gemini-explanation">
+                                <div class="shimmer-loader"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="card glass-card">
+                            <h3>Root Cause Analysis</h3>
+                            <p class="section-desc">Proxy variables that may be encoding the bias:</p>
+                            
+                            <div class="feature-importance-list" id="feature-list">
+                                <div class="shimmer-loader"></div>
+                            </div>
+                            
+                            <div class="gemini-content sm mt-4" id="gemini-root-cause">
+                                <div class="shimmer-loader"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-footer">
+                        <button class="btn btn-primary btn-large" onclick="window.location.hash='whatif'">Try What-If Simulator</button>
+                    </div>
+                </section>
+
+                <!-- Tab 4: What-If Simulator -->
+                <section id="tab-whatif" class="tab-content">
+                    <div class="card glass-card">
+                        <div class="simulator-header">
+                            <h3>Test a Candidate</h3>
+                            <p>Select a rejected candidate to see how their demographic attributes affected their outcome.</p>
+                        </div>
+                        
+                        <div class="simulator-controls">
+                            <select id="sim-candidate-select" class="form-control sm"></select>
+                            <span class="sim-arrow">→</span>
+                            <div class="sim-action">
+                                <span>If they were</span>
+                                <input type="text" id="sim-target-group" class="form-control sm" placeholder="e.g., Male, Tier-1">
+                            </div>
+                            <button class="btn btn-primary" id="btn-simulate">Simulate</button>
+                        </div>
+                        
+                        <div class="simulator-results hidden" id="sim-results">
+                            <div class="grid-2-col">
+                                <div class="sim-profile">
+                                    <h4>Original Candidate Profile</h4>
+                                    <ul class="profile-list" id="sim-profile-details"></ul>
+                                    <div class="outcome rejected">Actual Outcome: Rejected</div>
+                                </div>
+                                <div class="sim-analysis gemini-card">
+                                    <div class="card-header">
+                                        <div class="gemini-logo">✦</div>
+                                        <h4>Gemini Simulation</h4>
+                                        <div id="sim-prob-badge" class="badge ml-auto hidden" style="background: rgba(20, 184, 166, 0.2); color: var(--primary);">0% Prob</div>
+                                    </div>
+                                    <div class="gemini-content" id="sim-explanation">
+                                        <!-- Generated content -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="action-footer">
+                        <button class="btn btn-primary btn-large" onclick="window.location.hash='impact'">Apply Mitigation</button>
+                    </div>
+                </section>
+
+                <!-- Tab 5: Impact Dashboard (Mitigation) -->
+                <section id="tab-impact" class="tab-content">
+                    <div class="card glass-card full-width">
+                        <div class="impact-header">
+                            <div>
+                                <h3>Apply Fairness Mitigation</h3>
+                                <p>We use a 'Reweighting' algorithm to balance the training data without removing historical rows, ensuring equal opportunity.</p>
+                            </div>
+                            <button class="btn btn-success btn-large" id="btn-mitigate">Run Mitigation Engine</button>
+                        </div>
+                        
+                        <div class="impact-results hidden" id="mitigation-results">
+                            <div class="grid-2-col mt-4">
+                                <div class="metric-card before">
+                                    <h4>Before Mitigation</h4>
+                                    <div class="huge-metric" id="metric-before">--% Gap</div>
+                                    <div class="badge status-fail">Biased</div>
+                                </div>
+                                <div class="metric-card after">
+                                    <h4>After Mitigation</h4>
+                                    <div class="huge-metric" id="metric-after">--% Gap</div>
+                                    <div class="badge status-pass">Fair</div>
+                                </div>
+                            </div>
+                            
+                            <div class="success-banner mt-4">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                                <span>The model is now ready for production deployment with ethical constraints applied.</span>
+                            </div>
+                            
+                            <div style="margin-top: 24px; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap; border-top: 1px solid var(--border-color); padding-top: 24px;">
+                                <button class="btn btn-primary btn-large" id="btn-download-pdf" aria-label="Download impact report as PDF" style="display: inline-flex; align-items: center; gap: 8px;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    <span id="pdf-btn-text">Download PDF Report</span>
+                                </button>
+                                <button class="btn btn-sm" id="btn-export-json" style="background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    Export JSON
+                                </button>
+                                <button class="btn btn-sm" id="btn-export-csv" style="background: var(--bg-card); border: 1px solid var(--border-color); color: var(--text-main); display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px;">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    Export CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Tab 6: Audit History -->
+                <section id="tab-history" class="tab-content">
+                    <div class="card glass-card full-width">
+                        <div class="impact-header">
+                            <div>
+                                <h3>Past Audits</h3>
+                                <p>Review your previously run bias audits across all datasets.</p>
+                            </div>
+                            <button class="btn btn-sm" id="btn-clear-history" style="background: transparent; border: 1px solid var(--border-color); color: var(--text-main);">Clear History</button>
+                        </div>
+                            <div id="history-comparison-area" class="history-comparison-area hidden mt-4">
+                                <div class="card glass-card" style="padding: 16px;">
+                                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="21" x2="12" y2="3"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+                                        <h4 style="margin: 0;">Visual Comparison</h4>
+                                    </div>
+                                    <div class="grid-2-col" id="comparison-charts-container">
+                                        <div class="comparison-card">
+                                            <h5 style="margin-top: 0;">Bias Score Comparison</h5>
+                                            <div id="compare-bias-chart" style="height: 120px; display: flex; flex-direction: column; justify-content: center; gap: 12px;"></div>
+                                        </div>
+                                        <div class="comparison-card">
+                                            <h5 style="margin-top: 0;">Fairness Level</h5>
+                                            <div id="compare-fairness-chart" style="height: 120px; display: flex; flex-direction: column; justify-content: center; gap: 12px;"></div>
+                                        </div>
+                                    </div>
+                                    <div id="compare-delta-table" class="mt-4"></div>
+                                </div>
+                            </div>
+                            
+                            <div class="history-table-container mt-4" style="overflow-x: auto;">
+                                <table class="history-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                                    <thead>
+                                        <tr style="border-bottom: 1px solid var(--border-color);">
+                                            <th style="padding: 12px; width: 40px;"></th>
+                                            <th style="padding: 12px; font-weight: 500;">Date</th>
+                                            <th style="padding: 12px; font-weight: 500;">Dataset</th>
+                                            <th style="padding: 12px; font-weight: 500;">Config (Target / Sensitive)</th>
+                                            <th style="padding: 12px; font-weight: 500;">Rows</th>
+                                            <th style="padding: 12px; font-weight: 500;">Bias Gap</th>
+                                            <th style="padding: 12px; font-weight: 500;">Action</th>
+                                        </tr>
+                                    </thead>
+                                <tbody id="history-table-body">
+                                    <!-- Populated by JS -->
+                                </tbody>
+                            </table>
+                            <div id="no-history-msg" style="padding: 20px; text-align: center; color: var(--text-muted); display: none;">No past audits found.</div>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+            
+            <!-- Global Loader overlay -->
+            <div id="loader-overlay" class="loader-overlay hidden">
+                <div class="spinner"></div>
+                <h3 id="loader-text">Processing...</h3>
+            </div>
+            
         </main>
     </div>
 
@@ -379,7 +574,7 @@
     <script src="lib/jspdf.umd.min.js"></script>
     <script src="lib/jspdf.plugin.autotable.min.js"></script>
     <script src="lib/html-to-image.js"></script>
-    <script src="pdfReport.js?v=1.1"></script>
-    <script src="app.js?v=1.1"></script>
+    <script src="pdfReport.js?v=1.2"></script>
+    <script src="app.js?v=1.2"></script>
 </body>
 </html>
